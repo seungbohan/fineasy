@@ -1,0 +1,258 @@
+// ==========================================
+// dbdiagram.io 에 복붙하면 ERD가 자동 생성됩니다
+// https://dbdiagram.io 접속 → 왼쪽에 이 코드 붙여넣기
+// ==========================================
+
+// ===== 사용자 =====
+Table users {
+  id bigint [pk, increment]
+  email varchar(255) [unique, not null]
+  password_hash varchar(255) [not null]
+  nickname varchar(20) [unique, not null]
+  is_active boolean [default: true]
+  created_at timestamp [not null]
+  updated_at timestamp
+}
+
+// ===== 주식 =====
+Table stocks {
+  id bigint [pk, increment]
+  stock_code varchar(20) [unique, not null]
+  stock_name varchar(100) [not null]
+  market varchar(10) [not null, note: 'KRX, KOSDAQ, NASDAQ, NYSE']
+  sector varchar(100)
+  is_active boolean [default: true]
+  created_at timestamp [not null]
+  updated_at timestamp
+}
+
+Table stock_prices {
+  id bigint [pk, increment]
+  stock_id bigint [not null, ref: > stocks.id]
+  trade_date date [not null]
+  open_price decimal(15,2)
+  high_price decimal(15,2)
+  low_price decimal(15,2)
+  close_price decimal(15,2)
+  volume bigint
+  created_at timestamp [not null]
+
+  indexes {
+    (stock_id, trade_date) [unique]
+  }
+}
+
+// ===== 관심종목 =====
+Table watchlist {
+  id bigint [pk, increment]
+  user_id bigint [not null, ref: > users.id]
+  stock_id bigint [not null, ref: > stocks.id]
+  created_at timestamp [not null]
+
+  indexes {
+    (user_id, stock_id) [unique]
+  }
+}
+
+// ===== AI 분석 =====
+Table stock_analysis_reports {
+  id bigint [pk, increment]
+  stock_id bigint [not null, ref: > stocks.id]
+  report_date date [not null]
+  summary varchar(500)
+  description text
+  key_points text
+  technical_signals text
+  investment_opinion varchar(10)
+  disclaimer varchar(500)
+  generated_at timestamp
+
+  indexes {
+    (stock_id, report_date) [unique]
+  }
+}
+
+Table stock_predictions {
+  id bigint [pk, increment]
+  stock_id bigint [not null, ref: > stocks.id]
+  prediction_date date [not null]
+  target_period varchar(10) [note: 'ONE_DAY, ONE_WEEK']
+  direction varchar(10) [note: 'UP, DOWN, SIDEWAYS']
+  confidence int [note: '0-100']
+  reasons text
+  valuation varchar(20)
+  disclaimer varchar(500)
+  generated_at timestamp
+}
+
+// ===== 뉴스 =====
+Table news_articles {
+  id bigint [pk, increment]
+  title varchar(500) [not null]
+  content text
+  original_url varchar(1000) [unique]
+  source_name varchar(100)
+  published_at timestamp
+  sentiment varchar(10) [note: 'POSITIVE, NEGATIVE, NEUTRAL']
+  sentiment_score double
+  created_at timestamp [not null]
+}
+
+Table news_stock_tags {
+  news_article_id bigint [ref: > news_articles.id]
+  stock_id bigint [ref: > stocks.id]
+
+  indexes {
+    (news_article_id, stock_id) [pk]
+  }
+}
+
+Table news_article_analyses {
+  id bigint [pk, increment]
+  news_article_id bigint [unique, not null, ref: - news_articles.id]
+  summary text [not null]
+  market_impact text [not null]
+  related_stocks text [note: 'JSON array']
+  sentiment varchar(10) [not null]
+  key_takeaway varchar(500) [not null]
+  created_at timestamp [not null]
+}
+
+// ===== 재무 데이터 (DART) =====
+Table dart_corp_code {
+  id bigint [pk, increment]
+  corp_code varchar(20) [unique, not null]
+  corp_name varchar(200)
+  stock_code varchar(20) [unique, note: 'stocks.stock_code와 매핑']
+}
+
+Table dart_financial {
+  id bigint [pk, increment]
+  stock_code varchar(20) [not null, note: '비정규화: DART API 캐시용']
+  bsns_year varchar(4) [not null]
+  revenue bigint
+  operating_profit bigint
+  net_income bigint
+  total_assets bigint
+  total_liabilities bigint
+  total_equity bigint
+  operating_cash_flow bigint
+  created_at timestamp [not null]
+
+  indexes {
+    (stock_code, bsns_year) [unique]
+  }
+}
+
+// ===== 금융 용어 =====
+Table term_categories {
+  id bigint [pk, increment]
+  name varchar(50) [unique, not null]
+  display_order int
+}
+
+Table financial_terms {
+  id bigint [pk, increment]
+  name varchar(100) [unique, not null]
+  name_en varchar(100)
+  category_id bigint [ref: > term_categories.id]
+  difficulty varchar(20) [note: 'BEGINNER, INTERMEDIATE, ADVANCED']
+  simple_description varchar(500) [not null]
+  detailed_description text
+  example_sentence varchar(500)
+  created_at timestamp [not null]
+  updated_at timestamp
+}
+
+Table term_relations {
+  term_id bigint [ref: > financial_terms.id]
+  related_term_id bigint [ref: > financial_terms.id]
+
+  indexes {
+    (term_id, related_term_id) [pk]
+  }
+}
+
+// ===== 학습 =====
+Table learn_articles {
+  id bigint [pk, increment]
+  title varchar(200) [not null]
+  content text
+  category varchar(30) [note: 'BASICS, NEWS_READING, CHART_ANALYSIS, VALUE_ANALYSIS, MACRO_ECONOMY']
+  difficulty varchar(20)
+  estimated_read_minutes int
+  display_order int
+  is_published boolean [default: true]
+  created_at timestamp [not null]
+  updated_at timestamp
+}
+
+Table user_article_progress {
+  id bigint [pk, increment]
+  user_id bigint [not null, ref: > users.id]
+  article_id bigint [not null, ref: > learn_articles.id]
+  completed_at timestamp [not null]
+
+  indexes {
+    (user_id, article_id) [unique]
+  }
+}
+
+// ===== 한국은행 용어 =====
+Table bok_terms {
+  id bigint [pk, increment]
+  term varchar(100) [not null]
+  english_term varchar(200)
+  definition text [not null]
+  category varchar(50)
+  created_at timestamp [not null]
+}
+
+Table bok_term_ai_explanations {
+  id bigint [pk, increment]
+  bok_term_id bigint [unique, not null, ref: - bok_terms.id]
+  simple_summary text [not null]
+  easy_explanation text [not null]
+  example text [not null]
+  key_points text
+  created_at timestamp [not null]
+}
+
+// ===== 거시경제 =====
+Table macro_indicators {
+  id bigint [pk, increment]
+  indicator_code varchar(50) [not null]
+  indicator_name varchar(100)
+  value double [not null]
+  unit varchar(30)
+  record_date date [not null]
+  source varchar(100)
+}
+
+// ===== 암호화폐 =====
+Table crypto_market_data {
+  id bigint [pk, increment]
+  symbol varchar(20) [not null]
+  name varchar(50)
+  price_usd decimal(20,8)
+  price_krw decimal(20,2)
+  market_cap_usd decimal(24,2)
+  volume_24h_usd decimal(24,2)
+  change_24h double
+  change_7d double
+  recorded_at timestamp [not null]
+  source varchar(30)
+}
+
+// ===== 글로벌 이벤트 =====
+Table global_events {
+  id bigint [pk, increment]
+  event_type varchar(20) [not null, note: 'GEOPOLITICAL, FISCAL, INDUSTRY, BLACK_SWAN']
+  title varchar(500) [not null]
+  summary text
+  source_url varchar(1000) [unique]
+  source_name varchar(100)
+  risk_level varchar(10) [not null, note: 'LOW, MEDIUM, HIGH, CRITICAL']
+  published_at timestamp
+  created_at timestamp [not null]
+}
