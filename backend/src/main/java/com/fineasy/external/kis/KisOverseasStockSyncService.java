@@ -16,7 +16,7 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
-import java.nio.charset.StandardCharsets;
+import java.nio.charset.Charset;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.*;
@@ -34,6 +34,17 @@ public class KisOverseasStockSyncService {
     private static final String NYS_URL = "https://new.real.download.dws.co.kr/common/master/nysmst.cod.zip";
     private static final String AMS_URL = "https://new.real.download.dws.co.kr/common/master/amsmst.cod.zip";
 
+    private static final Charset EUC_KR = Charset.forName("EUC-KR");
+
+    // KIS master file format (tab-separated):
+    // 0: country(US)  1: ??  2: exchange(NAS/NYS/AMS)  3: country_kr
+    // 4: symbol  5: exchange+symbol  6: korean_name  7: english_name
+    // 8: stock_type  9: currency  ...
+    private static final int FIELD_SYMBOL = 4;
+    private static final int FIELD_KOREAN_NAME = 6;
+    private static final int FIELD_ENGLISH_NAME = 7;
+    private static final int MIN_FIELDS = 8;
+
     private final StockRepository stockRepository;
     private final HttpClient httpClient;
 
@@ -44,58 +55,17 @@ public class KisOverseasStockSyncService {
                 .build();
     }
 
-    private static final Map<String, String> KOREAN_NAMES = Map.ofEntries(
-            Map.entry("AAPL", "애플"), Map.entry("MSFT", "마이크로소프트"),
-            Map.entry("NVDA", "엔비디아"), Map.entry("GOOGL", "알파벳(구글)"),
-            Map.entry("GOOG", "알파벳(구글)"), Map.entry("AMZN", "아마존"),
-            Map.entry("META", "메타(페이스북)"), Map.entry("TSLA", "테슬라"),
-            Map.entry("AVGO", "브로드컴"), Map.entry("COST", "코스트코"),
-            Map.entry("NFLX", "넷플릭스"), Map.entry("AMD", "AMD"),
-            Map.entry("ADBE", "어도비"), Map.entry("QCOM", "퀄컴"),
-            Map.entry("INTC", "인텔"), Map.entry("CSCO", "시스코"),
-            Map.entry("PEP", "펩시코"), Map.entry("TMUS", "T모바일"),
-            Map.entry("AMGN", "암젠"), Map.entry("HON", "허니웰"),
-            Map.entry("MU", "마이크론"), Map.entry("PYPL", "페이팔"),
-            Map.entry("COIN", "코인베이스"), Map.entry("PLTR", "팔란티어"),
-            Map.entry("BRK/B", "버크셔해서웨이"), Map.entry("BRK.B", "버크셔해서웨이"),
-            Map.entry("LLY", "일라이릴리"), Map.entry("JPM", "JP모건"),
-            Map.entry("V", "비자"), Map.entry("UNH", "유나이티드헬스"),
-            Map.entry("MA", "마스터카드"), Map.entry("XOM", "엑슨모빌"),
-            Map.entry("JNJ", "존슨앤존슨"), Map.entry("PG", "P&G"),
-            Map.entry("HD", "홈디포"), Map.entry("WMT", "월마트"),
-            Map.entry("CVX", "셰브론"), Map.entry("BAC", "뱅크오브아메리카"),
-            Map.entry("KO", "코카콜라"), Map.entry("MRK", "머크"),
-            Map.entry("ABBV", "애브비"), Map.entry("CRM", "세일즈포스"),
-            Map.entry("DIS", "디즈니"), Map.entry("NKE", "나이키"),
-            Map.entry("BA", "보잉"), Map.entry("GS", "골드만삭스"),
-            Map.entry("CAT", "캐터필러"), Map.entry("IBM", "IBM"),
-            Map.entry("GE", "GE에어로스페이스"), Map.entry("T", "AT&T"),
-            Map.entry("VZ", "버라이즌"), Map.entry("UBER", "우버"),
-            Map.entry("ARM", "ARM홀딩스"), Map.entry("TSM", "TSMC"),
-            Map.entry("ASML", "ASML"), Map.entry("CRWD", "크라우드스트라이크"),
-            Map.entry("PANW", "팔로알토네트웍스"), Map.entry("SNPS", "시놉시스"),
-            Map.entry("LRCX", "램리서치"), Map.entry("AMAT", "어플라이드머티리얼즈"),
-            Map.entry("MRVL", "마벨테크놀로지"), Map.entry("NOW", "서비스나우"),
-            Map.entry("SMCI", "슈퍼마이크로"), Map.entry("BKNG", "부킹홀딩스"),
-            Map.entry("MELI", "메르카도리브레"), Map.entry("INTU", "인튜이트"),
-            Map.entry("TXN", "텍사스인스트루먼트"), Map.entry("KLAC", "KLA"),
-            Map.entry("CMCSA", "컴캐스트"), Map.entry("ISRG", "인튜이티브서지컬"),
-            Map.entry("NEE", "넥스트에라에너지"), Map.entry("UPS", "UPS"),
-            Map.entry("MMM", "3M")
-    );
-
     @EventListener(ApplicationReadyEvent.class)
     @Transactional
     public void syncOnStartup() {
         log.info("Starting overseas stock master sync...");
         try {
-            Set<String> existingCodes = stockRepository.findAll().stream()
-                    .map(StockEntity::getStockCode)
-                    .collect(Collectors.toSet());
+            Map<String, StockEntity> existingByCode = stockRepository.findAll().stream()
+                    .collect(Collectors.toMap(StockEntity::getStockCode, s -> s, (a, b) -> a));
 
-            int nasCount = syncMarket(NAS_URL, "nasmst.cod", Market.NASDAQ, existingCodes);
-            int nysCount = syncMarket(NYS_URL, "nysmst.cod", Market.NYSE, existingCodes);
-            int amsCount = syncMarket(AMS_URL, "amsmst.cod", Market.AMEX, existingCodes);
+            int nasCount = syncMarket(NAS_URL, Market.NASDAQ, existingByCode);
+            int nysCount = syncMarket(NYS_URL, Market.NYSE, existingByCode);
+            int amsCount = syncMarket(AMS_URL, Market.AMEX, existingByCode);
 
             log.info("Overseas stock master sync completed. NASDAQ={}, NYSE={}, AMEX={}",
                     nasCount, nysCount, amsCount);
@@ -104,23 +74,28 @@ public class KisOverseasStockSyncService {
         }
     }
 
-    private int syncMarket(String url, String entryName, Market market, Set<String> existingCodes) {
+    private int syncMarket(String url, Market market, Map<String, StockEntity> existingByCode) {
         try {
             byte[] zipBytes = downloadFile(url);
-            String content = extractFromZip(zipBytes, entryName);
+            String content = extractFromZip(zipBytes);
             List<StockRecord> records = parseMasterFile(content);
 
             List<StockEntity> newStocks = new ArrayList<>();
+            int updated = 0;
             LocalDateTime now = LocalDateTime.now();
 
             for (StockRecord record : records) {
-                if (!existingCodes.contains(record.code)) {
-                    String name = buildDisplayName(record.code, record.name);
-                    newStocks.add(new StockEntity(
-                            null, record.code, name,
-                            market, record.sector, true, now
-                    ));
-                    existingCodes.add(record.code);
+                StockEntity existing = existingByCode.get(record.code);
+                if (existing == null) {
+                    StockEntity stock = new StockEntity(
+                            null, record.code, record.displayName(),
+                            market, null, true, now
+                    );
+                    newStocks.add(stock);
+                    existingByCode.put(record.code, stock);
+                } else if (!existing.getStockName().equals(record.displayName())) {
+                    existing.updateName(record.displayName());
+                    updated++;
                 }
             }
 
@@ -128,17 +103,13 @@ public class KisOverseasStockSyncService {
                 stockRepository.saveAll(newStocks);
             }
 
-            log.info("Parsed {} {} stocks, {} new", records.size(), market, newStocks.size());
+            log.info("Parsed {} {} stocks, {} new, {} name-updated",
+                    records.size(), market, newStocks.size(), updated);
             return newStocks.size();
         } catch (Exception e) {
             log.warn("Failed to sync {} overseas stocks: {}", market, e.getMessage());
             return 0;
         }
-    }
-
-    private String buildDisplayName(String code, String engName) {
-        String kr = KOREAN_NAMES.get(code);
-        return kr != null ? kr + " " + engName : engName;
     }
 
     private byte[] downloadFile(String url) throws IOException, InterruptedException {
@@ -156,30 +127,16 @@ public class KisOverseasStockSyncService {
         return response.body();
     }
 
-    private String extractFromZip(byte[] zipBytes, String entryName) throws IOException {
-        try (ZipInputStream zis = new ZipInputStream(new ByteArrayInputStream(zipBytes))) {
-            ZipEntry entry;
-            while ((entry = zis.getNextEntry()) != null) {
-                if (entry.getName().equalsIgnoreCase(entryName)) {
-                    return new String(zis.readAllBytes(), StandardCharsets.UTF_8);
-                }
-            }
-        }
-        // If exact name not found, try first entry
+    private String extractFromZip(byte[] zipBytes) throws IOException {
         try (ZipInputStream zis = new ZipInputStream(new ByteArrayInputStream(zipBytes))) {
             ZipEntry entry = zis.getNextEntry();
             if (entry != null) {
-                return new String(zis.readAllBytes(), StandardCharsets.UTF_8);
+                return new String(zis.readAllBytes(), EUC_KR);
             }
         }
-        throw new IOException("No entry found in zip for: " + entryName);
+        throw new IOException("Empty zip file");
     }
 
-    /**
-     * KIS overseas master file format (tab-separated):
-     * Each line contains: symbol, exchange, name, sector info, etc.
-     * Format may vary, so we parse flexibly.
-     */
     private List<StockRecord> parseMasterFile(String content) {
         List<StockRecord> records = new ArrayList<>();
         String[] lines = content.split("\n");
@@ -188,28 +145,26 @@ public class KisOverseasStockSyncService {
             if (line.isBlank()) continue;
 
             String[] parts = line.split("\t");
-            if (parts.length < 2) continue;
+            if (parts.length < MIN_FIELDS) continue;
 
-            // First field is typically the symbol, second is the name
-            String symbol = parts[0].trim();
+            String symbol = parts[FIELD_SYMBOL].trim();
+            String koreanName = parts[FIELD_KOREAN_NAME].trim();
+            String englishName = parts[FIELD_ENGLISH_NAME].trim();
 
-            // Skip empty symbols, headers, or invalid entries
-            if (symbol.isEmpty() || symbol.contains(" ") || symbol.length() > 10) continue;
+            // Skip invalid entries
+            if (symbol.isEmpty() || symbol.length() > 10) continue;
+            // Skip symbols with spaces (header or invalid)
+            if (symbol.contains(" ")) continue;
 
-            String name = parts.length > 1 ? parts[1].trim() : symbol;
-            String sector = parts.length > 2 ? parts[2].trim() : null;
-
-            // Skip if name looks like a header
-            if (name.equalsIgnoreCase("NAME") || symbol.equalsIgnoreCase("SYMBOL")) continue;
-
-            if (sector != null && sector.length() > 100) {
-                sector = sector.substring(0, 100);
-            }
-
-            records.add(new StockRecord(symbol, name, sector));
+            records.add(new StockRecord(symbol, koreanName, englishName));
         }
         return records;
     }
 
-    private record StockRecord(String code, String name, String sector) {}
+    private record StockRecord(String code, String koreanName, String englishName) {
+        String displayName() {
+            if (koreanName.isEmpty()) return englishName;
+            return koreanName;
+        }
+    }
 }
