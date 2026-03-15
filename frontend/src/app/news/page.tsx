@@ -1,7 +1,19 @@
 'use client';
 
-import { useState } from 'react';
-import { ExternalLink, Sparkles, TrendingUp, Tag, AlertCircle, Newspaper } from 'lucide-react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import Link from 'next/link';
+import {
+  ExternalLink,
+  Sparkles,
+  TrendingUp,
+  Tag,
+  AlertCircle,
+  Newspaper,
+  Bell,
+  ArrowUp,
+  LogIn,
+  Loader2,
+} from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import {
@@ -14,12 +26,23 @@ import {
 } from '@/components/ui/sheet';
 import { Skeleton } from '@/components/ui/skeleton';
 import { SentimentBadge } from '@/components/shared/sentiment-badge';
+import { TermHighlighter } from '@/components/shared/term-highlighter';
+import { AlertKeywords } from '@/components/shared/alert-keywords';
 import { NewsListSkeleton } from '@/components/shared/loading-skeleton';
-import { useNews, useNewsAnalysis } from '@/hooks/use-news';
+import {
+  useInfiniteNews,
+  useNewsAnalysis,
+  useNewNewsCount,
+  useWatchlistFilteredNews,
+} from '@/hooks/use-news';
+import { useAuthStore } from '@/stores/auth-store';
+import { useWatchlistStore } from '@/stores/watchlist-store';
 import { formatRelativeTime } from '@/lib/format';
 import { cn } from '@/lib/utils';
+import type { NewsArticle } from '@/types';
 
 type SentimentFilter = 'ALL' | 'POSITIVE' | 'NEGATIVE' | 'NEUTRAL';
+type NewsTab = 'all' | 'watchlist';
 
 const SENTIMENT_FILTERS: { value: SentimentFilter; label: string }[] = [
   { value: 'ALL', label: '전체' },
@@ -44,6 +67,8 @@ function getSentimentHeroBg(sentiment: string): string {
   }
 }
 
+/* ── Skeleton / Error inline components ── */
+
 function AnalysisSkeleton() {
   return (
     <div className="space-y-5 px-4 py-2">
@@ -66,11 +91,6 @@ function AnalysisSkeleton() {
           <Skeleton className="h-7 w-14 rounded-full" />
         </div>
       </div>
-      <div className="space-y-2">
-        <Skeleton className="h-4 w-24" />
-        <Skeleton className="h-4 w-full" />
-        <Skeleton className="h-4 w-4/5" />
-      </div>
     </div>
   );
 }
@@ -87,27 +107,144 @@ function AnalysisError() {
   );
 }
 
-export default function NewsPage() {
-  const [sentiment, setSentiment] = useState<SentimentFilter>('ALL');
-  const [page, setPage] = useState(1);
-  const pageSize = 10;
+/* ── Stock tag chip ── */
 
+function StockTagChips({ article }: { article: NewsArticle }) {
+  const tags = article.taggedStocks;
+  if (!tags || tags.length === 0) return null;
+
+  return (
+    <div className="mt-1.5 flex flex-wrap gap-1">
+      {tags.map((tag) => (
+        <Link
+          key={tag.stockCode}
+          href={`/stocks/${tag.stockCode}`}
+          onClick={(e) => e.stopPropagation()}
+          className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-600 transition-colors hover:bg-gray-200 hover:text-gray-800"
+        >
+          {tag.stockName}
+        </Link>
+      ))}
+    </div>
+  );
+}
+
+/* ── New news banner ── */
+
+function NewNewsBanner({
+  count,
+  onRefresh,
+}: {
+  count: number;
+  onRefresh: () => void;
+}) {
+  if (count <= 0) return null;
+
+  return (
+    <div className="animate-slide-down sticky top-16 z-20 flex justify-center px-4 py-2">
+      <button
+        onClick={onRefresh}
+        className="flex items-center gap-2 rounded-full bg-[#3182F6] px-4 py-2 text-[13px] font-semibold text-white shadow-lg shadow-blue-200/50 transition-all hover:bg-[#1B6BF3] active:scale-95"
+      >
+        <ArrowUp className="h-3.5 w-3.5" />
+        새 뉴스 {count}건
+      </button>
+    </div>
+  );
+}
+
+/* ── Infinite scroll sentinel ── */
+
+function InfiniteScrollSentinel({
+  onIntersect,
+  hasMore,
+  isFetchingNextPage,
+}: {
+  onIntersect: () => void;
+  hasMore: boolean;
+  isFetchingNextPage: boolean;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!hasMore) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) {
+          onIntersect();
+        }
+      },
+      { rootMargin: '200px' }
+    );
+    if (ref.current) observer.observe(ref.current);
+    return () => observer.disconnect();
+  }, [hasMore, onIntersect]);
+
+  if (!hasMore && !isFetchingNextPage) return null;
+
+  return (
+    <div ref={ref} className="flex justify-center py-6">
+      {isFetchingNextPage && (
+        <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
+      )}
+    </div>
+  );
+}
+
+/* ── Main Page Component ── */
+
+export default function NewsPage() {
+  const [newsTab, setNewsTab] = useState<NewsTab>('all');
+  const [sentiment, setSentiment] = useState<SentimentFilter>('ALL');
   const [selectedNewsId, setSelectedNewsId] = useState<number | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
 
-  const { data, isLoading } = useNews({
+  const { isAuthenticated } = useAuthStore();
+  const { watchlist } = useWatchlistStore();
+
+  /* Track the time of initial fetch for new-news polling */
+  const [lastFetchTime] = useState(() => new Date().toISOString());
+
+  /* ── Infinite scroll for "all" tab ── */
+  const {
+    data: infiniteData,
+    isLoading: isInfiniteLoading,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+    refetch: refetchInfinite,
+  } = useInfiniteNews({
     sentiment: sentiment === 'ALL' ? undefined : sentiment,
-    page,
-    size: pageSize,
   });
 
+  const allArticles = useMemo(
+    () => infiniteData?.pages.flatMap((p) => p.items) ?? [],
+    [infiniteData]
+  );
+
+  /* ── Watchlist filtered news ── */
+  const [watchlistPage, setWatchlistPage] = useState(1);
+  const { data: watchlistData, isLoading: isWatchlistLoading } =
+    useWatchlistFilteredNews(
+      newsTab === 'watchlist' ? watchlist : [],
+      watchlistPage
+    );
+  const watchlistArticles = watchlistData?.items ?? [];
+  const watchlistTotalPages = watchlistData
+    ? Math.ceil(watchlistData.total / 10)
+    : 1;
+
+  /* ── New news count polling ── */
+  const { data: newNewsData, refetch: resetNewCount } =
+    useNewNewsCount(lastFetchTime);
+  const newCount = newNewsData?.count ?? 0;
+
+  /* ── Analysis sheet ── */
   const {
     data: analysisData,
     isLoading: isAnalysisLoading,
     isError: isAnalysisError,
   } = useNewsAnalysis(selectedNewsId);
-
-  const totalPages = data ? Math.ceil(data.total / pageSize) : 1;
 
   const handleArticleClick = (newsId: number) => {
     setSelectedNewsId(newsId);
@@ -116,178 +253,284 @@ export default function NewsPage() {
 
   const handleSheetOpenChange = (open: boolean) => {
     setSheetOpen(open);
-    if (!open) {
-      setSelectedNewsId(null);
-    }
+    if (!open) setSelectedNewsId(null);
   };
 
-  const heroArticle = data?.items?.[0];
-  const restArticles = data?.items?.slice(1) ?? [];
+  const handleNewNewsRefresh = useCallback(() => {
+    refetchInfinite();
+    resetNewCount();
+  }, [refetchInfinite, resetNewCount]);
+
+  const handleFetchNextPage = useCallback(() => {
+    if (hasNextPage && !isFetchingNextPage) {
+      fetchNextPage();
+    }
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
+
+  /* Determine active articles list */
+  const isAllTab = newsTab === 'all';
+  const articles = isAllTab ? allArticles : watchlistArticles;
+  const isLoading = isAllTab ? isInfiniteLoading : isWatchlistLoading;
+
+  const heroArticle = isAllTab && articles.length > 0 ? articles[0] : null;
+  const restArticles = isAllTab ? articles.slice(1) : articles;
 
   return (
     <div className="mx-auto max-w-screen-xl p-4 pb-8 md:p-6 md:pb-10 space-y-5">
 
+      {/* Page header */}
       <div className="flex items-center gap-2">
         <Newspaper className="h-5 w-5 text-[#3182F6]" />
         <h1 className="text-2xl font-bold text-gray-900">금융 뉴스</h1>
       </div>
 
-      <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-1">
-        {SENTIMENT_FILTERS.map((filter) => (
-          <button
-            key={filter.value}
-            className={cn(
-              'shrink-0 rounded-full px-4 py-2 text-[13px] font-semibold transition-colors',
-              sentiment === filter.value
-                ? 'bg-gray-900 text-white'
-                : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
-            )}
-            onClick={() => {
-              setSentiment(filter.value);
-              setPage(1);
-            }}
-          >
-            {filter.label}
-          </button>
-        ))}
+      {/* Feature 2: News tab - "전체" | "내 종목" */}
+      <div className="flex gap-1 rounded-xl bg-gray-100 p-1">
+        <button
+          onClick={() => setNewsTab('all')}
+          className={cn(
+            'flex-1 rounded-lg py-2 text-[13px] font-semibold transition-all',
+            newsTab === 'all'
+              ? 'bg-white text-gray-900 shadow-sm'
+              : 'text-gray-500 hover:text-gray-700'
+          )}
+        >
+          전체
+        </button>
+        <button
+          onClick={() => setNewsTab('watchlist')}
+          className={cn(
+            'flex-1 rounded-lg py-2 text-[13px] font-semibold transition-all flex items-center justify-center gap-1.5',
+            newsTab === 'watchlist'
+              ? 'bg-white text-gray-900 shadow-sm'
+              : 'text-gray-500 hover:text-gray-700'
+          )}
+        >
+          <Bell className="h-3.5 w-3.5" />
+          내 종목
+        </button>
       </div>
 
-      {isLoading ? (
-        <NewsListSkeleton count={6} />
-      ) : data && data.items.length > 0 ? (
-        <div className="space-y-3">
-
-          {heroArticle && (
+      {/* Sentiment filter pills (only for "all" tab) */}
+      {isAllTab && (
+        <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-1">
+          {SENTIMENT_FILTERS.map((filter) => (
             <button
-              type="button"
-              onClick={() => handleArticleClick(heroArticle.id)}
-              className="w-full text-left"
+              key={filter.value}
+              className={cn(
+                'shrink-0 rounded-full px-4 py-2 text-[13px] font-semibold transition-colors',
+                sentiment === filter.value
+                  ? 'bg-gray-900 text-white'
+                  : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+              )}
+              onClick={() => setSentiment(filter.value)}
             >
-              <Card className={cn(
-                'rounded-2xl border-0 shadow-none overflow-hidden transition-all duration-300 hover:shadow-[0_4px_16px_rgba(0,0,0,0.06)] relative',
-                getSentimentHeroBg(heroArticle.sentiment)
-              )}>
-
-                <div className="absolute -left-8 -bottom-8 h-32 w-32 rounded-full bg-blue-100/30 blur-2xl pointer-events-none" />
-                <CardContent className="p-5 md:p-6 relative z-10">
-                  <div className="flex items-center gap-2 mb-3">
-                    <span className="rounded-full bg-[#3182F6] px-2.5 py-0.5 text-[10px] font-semibold text-white">
-                      주요 뉴스
-                    </span>
-                    <SentimentBadge sentiment={heroArticle.sentiment} />
-                  </div>
-                  <h2 className="text-lg md:text-xl font-bold text-gray-900 leading-snug line-clamp-2">
-                    {heroArticle.title}
-                  </h2>
-                  <div className="mt-3 flex items-center gap-2 flex-wrap">
-                    <span className="text-xs text-gray-500">
-                      {heroArticle.sourceName}
-                    </span>
-                    <span className="text-xs text-gray-400">
-                      {formatRelativeTime(heroArticle.publishedAt)}
-                    </span>
-                    {heroArticle.stockCodes && heroArticle.stockCodes.length > 0 && (
-                      <span className="text-[11px] text-[#3182F6] font-semibold">
-                        {heroArticle.stockCodes.join(', ')}
-                      </span>
-                    )}
-                  </div>
-                  <div className="mt-3 flex items-center gap-1.5 text-xs text-[#3182F6] font-semibold">
-                    <Sparkles className="h-3.5 w-3.5" />
-                    AI 분석 보기
-                  </div>
-                </CardContent>
-              </Card>
+              {filter.label}
             </button>
-          )}
+          ))}
+        </div>
+      )}
 
-          {restArticles.length > 0 && (
-            <Card className="rounded-2xl border-0 bg-white shadow-none overflow-hidden">
-              <CardContent className="divide-y divide-gray-50 p-0">
-                {restArticles.map((article) => (
-                  <button
-                    key={article.id}
-                    type="button"
-                    className="group flex w-full items-stretch text-left transition-colors hover:bg-gray-50/50"
-                    onClick={() => handleArticleClick(article.id)}
-                  >
+      {/* Feature 3: New news banner */}
+      {isAllTab && newCount > 0 && (
+        <NewNewsBanner count={newCount} onRefresh={handleNewNewsRefresh} />
+      )}
 
-                    <div className={cn(
-                      'w-1 group-hover:w-1.5 shrink-0 transition-all duration-200',
-                      getSentimentAccentColor(article.sentiment)
-                    )} />
-                    <div className="flex flex-1 items-start gap-3 px-4 py-4">
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-semibold text-gray-900 leading-snug line-clamp-2">
-                          {article.title}
-                        </p>
-                        <div className="mt-2 flex items-center gap-2 flex-wrap">
-                          <SentimentBadge sentiment={article.sentiment} />
-                          <span className="text-[11px] text-gray-500">
-                            {article.sourceName}
+      {/* Feature 2: Watchlist tab - login prompt */}
+      {newsTab === 'watchlist' && !isAuthenticated && (
+        <Card className="rounded-2xl border-0 bg-white shadow-none">
+          <CardContent className="flex flex-col items-center gap-3 p-8">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-blue-50">
+              <LogIn className="h-6 w-6 text-[#3182F6]" />
+            </div>
+            <p className="text-[15px] font-semibold text-gray-700">
+              로그인하면 관심 종목 뉴스를 모아볼 수 있어요
+            </p>
+            <p className="text-[13px] text-gray-400">
+              관심 종목을 등록하고 맞춤 뉴스를 받아보세요
+            </p>
+            <Link href="/login">
+              <Button className="mt-2 rounded-xl bg-[#3182F6] px-6 py-2.5 text-sm font-semibold text-white hover:bg-[#1B6BF3]">
+                로그인
+              </Button>
+            </Link>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Watchlist empty state */}
+      {newsTab === 'watchlist' && isAuthenticated && watchlist.length === 0 && (
+        <Card className="rounded-2xl border-0 bg-white shadow-none">
+          <CardContent className="flex flex-col items-center gap-3 p-8">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gray-100">
+              <Bell className="h-6 w-6 text-gray-300" />
+            </div>
+            <p className="text-[15px] font-semibold text-gray-700">
+              관심 종목이 없습니다
+            </p>
+            <p className="text-[13px] text-gray-400">
+              종목 상세 페이지에서 하트를 눌러 관심 종목을 추가하세요
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* News list */}
+      {(isAllTab || (newsTab === 'watchlist' && isAuthenticated && watchlist.length > 0)) && (
+        <>
+          {isLoading ? (
+            <NewsListSkeleton count={6} />
+          ) : articles.length > 0 ? (
+            <div className="space-y-3">
+
+              {/* Hero article (all tab only) */}
+              {heroArticle && (
+                <button
+                  type="button"
+                  onClick={() => handleArticleClick(heroArticle.id)}
+                  className="w-full text-left"
+                >
+                  <Card className={cn(
+                    'rounded-2xl border-0 shadow-none overflow-hidden transition-all duration-300 hover:shadow-[0_4px_16px_rgba(0,0,0,0.06)] hover:scale-[1.005] relative',
+                    getSentimentHeroBg(heroArticle.sentiment)
+                  )}>
+                    <div className="absolute -left-8 -bottom-8 h-32 w-32 rounded-full bg-blue-100/30 blur-2xl pointer-events-none" />
+                    <CardContent className="p-5 md:p-6 relative z-10">
+                      <div className="flex items-center gap-2 mb-3">
+                        {heroArticle.isBreaking && (
+                          <span className="rounded-full bg-red-500 px-2.5 py-0.5 text-[10px] font-bold text-white animate-pulse">
+                            속보
                           </span>
-                          <span className="text-[11px] text-gray-400">
-                            {formatRelativeTime(article.publishedAt)}
-                          </span>
-                          {article.stockCodes && article.stockCodes.length > 0 && (
-                            <span className="text-[11px] text-[#3182F6] font-semibold">
-                              {article.stockCodes.join(', ')}
-                            </span>
-                          )}
-                        </div>
+                        )}
+                        <span className="rounded-full bg-[#3182F6] px-2.5 py-0.5 text-[10px] font-semibold text-white">
+                          주요 뉴스
+                        </span>
+                        <SentimentBadge sentiment={heroArticle.sentiment} />
                       </div>
-                      <Sparkles className="mt-1 h-4 w-4 shrink-0 text-gray-200 transition-colors duration-200 group-hover:text-[#3182F6]" />
-                    </div>
-                  </button>
-                ))}
-              </CardContent>
-            </Card>
+                      <h2 className="text-lg md:text-xl font-bold text-gray-900 leading-snug line-clamp-2">
+                        <TermHighlighter text={heroArticle.title} />
+                      </h2>
+                      <div className="mt-3 flex items-center gap-2 flex-wrap">
+                        <span className="text-xs text-gray-500">
+                          {heroArticle.sourceName}
+                        </span>
+                        <span className="text-[12px] font-medium text-gray-500">
+                          {formatRelativeTime(heroArticle.publishedAt)}
+                        </span>
+                      </div>
+                      <StockTagChips article={heroArticle} />
+                      <div className="mt-3 flex items-center gap-1.5 text-xs text-[#3182F6] font-semibold">
+                        <Sparkles className="h-3.5 w-3.5" />
+                        AI 분석 보기
+                      </div>
+                    </CardContent>
+                  </Card>
+                </button>
+              )}
+
+              {/* Rest articles */}
+              {restArticles.length > 0 && (
+                <Card className="rounded-2xl border-0 bg-white shadow-none overflow-hidden">
+                  <CardContent className="divide-y divide-gray-50 p-0">
+                    {restArticles.map((article) => (
+                      <button
+                        key={article.id}
+                        type="button"
+                        className="group flex w-full items-stretch text-left transition-all hover:bg-gray-50/50 hover:scale-[1.002]"
+                        onClick={() => handleArticleClick(article.id)}
+                      >
+                        <div className={cn(
+                          'w-1 group-hover:w-1.5 shrink-0 transition-all duration-200',
+                          getSentimentAccentColor(article.sentiment)
+                        )} />
+                        <div className="flex flex-1 items-start gap-3 px-4 py-4">
+                          <div className="flex-1 min-w-0">
+                            {article.isBreaking && (
+                              <span className="mr-1.5 inline-block rounded bg-red-500 px-1.5 py-0.5 text-[10px] font-bold text-white leading-none align-middle">
+                                속보
+                              </span>
+                            )}
+                            <p className="inline text-sm font-semibold text-gray-900 leading-snug line-clamp-2">
+                              <TermHighlighter text={article.title} />
+                            </p>
+                            <div className="mt-2 flex items-center gap-2 flex-wrap">
+                              <SentimentBadge sentiment={article.sentiment} />
+                              <span className="text-[11px] text-gray-500">
+                                {article.sourceName}
+                              </span>
+                              <span className="text-[12px] font-medium text-gray-500">
+                                {formatRelativeTime(article.publishedAt)}
+                              </span>
+                            </div>
+                            <StockTagChips article={article} />
+                          </div>
+                          <Sparkles className="mt-1 h-4 w-4 shrink-0 text-gray-200 transition-colors duration-200 group-hover:text-[#3182F6]" />
+                        </div>
+                      </button>
+                    ))}
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+          ) : (
+            <div className="py-16 text-center text-[13px] text-gray-400">
+              뉴스가 없습니다
+            </div>
           )}
-        </div>
-      ) : (
-        <div className="py-16 text-center text-[13px] text-gray-400">
-          뉴스가 없습니다
-        </div>
+
+          {/* Feature 10: Infinite scroll (all tab only) */}
+          {isAllTab && (
+            <InfiniteScrollSentinel
+              onIntersect={handleFetchNextPage}
+              hasMore={!!hasNextPage}
+              isFetchingNextPage={isFetchingNextPage}
+            />
+          )}
+
+          {/* Watchlist tab: simple pagination */}
+          {newsTab === 'watchlist' && watchlistTotalPages > 1 && (
+            <div className="flex items-center justify-center gap-3">
+              <button
+                disabled={watchlistPage <= 1}
+                onClick={() => setWatchlistPage((p) => p - 1)}
+                className={cn(
+                  'rounded-full px-4 py-2 text-[13px] font-semibold transition-colors',
+                  watchlistPage <= 1
+                    ? 'bg-gray-50 text-gray-300 cursor-not-allowed'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                )}
+              >
+                이전
+              </button>
+              <span className="text-sm text-gray-500 tabular-nums">
+                {watchlistPage} / {watchlistTotalPages}
+              </span>
+              <button
+                disabled={watchlistPage >= watchlistTotalPages}
+                onClick={() => setWatchlistPage((p) => p + 1)}
+                className={cn(
+                  'rounded-full px-4 py-2 text-[13px] font-semibold transition-colors',
+                  watchlistPage >= watchlistTotalPages
+                    ? 'bg-gray-50 text-gray-300 cursor-not-allowed'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                )}
+              >
+                다음
+              </button>
+            </div>
+          )}
+        </>
       )}
 
-      {totalPages > 1 && (
-        <div className="flex items-center justify-center gap-3">
-          <button
-            disabled={page <= 1}
-            onClick={() => setPage((p) => p - 1)}
-            className={cn(
-              'rounded-full px-4 py-2 text-[13px] font-semibold transition-colors',
-              page <= 1
-                ? 'bg-gray-50 text-gray-300 cursor-not-allowed'
-                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-            )}
-          >
-            이전
-          </button>
-          <span className="text-sm text-gray-500 tabular-nums">
-            {page} / {totalPages}
-          </span>
-          <button
-            disabled={page >= totalPages}
-            onClick={() => setPage((p) => p + 1)}
-            className={cn(
-              'rounded-full px-4 py-2 text-[13px] font-semibold transition-colors',
-              page >= totalPages
-                ? 'bg-gray-50 text-gray-300 cursor-not-allowed'
-                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-            )}
-          >
-            다음
-          </button>
-        </div>
-      )}
+      {/* Feature 9: Alert keyword management */}
+      {isAuthenticated && <AlertKeywords />}
 
+      {/* Analysis Sheet */}
       <Sheet open={sheetOpen} onOpenChange={handleSheetOpenChange}>
         <SheetContent
           side="bottom"
           className="mx-auto max-w-screen-md rounded-t-3xl max-h-[85vh] overflow-y-auto"
         >
-
           <div className="flex justify-center pt-3 pb-1">
             <div className="h-1.5 w-12 rounded-full bg-gray-200" />
           </div>
@@ -319,7 +562,6 @@ export default function NewsPage() {
             <AnalysisError />
           ) : analysisData ? (
             <div className="space-y-5 px-5 py-3">
-
               <section>
                 <div className="flex items-center gap-1.5 mb-2">
                   <Sparkles className="h-3.5 w-3.5 text-[#3182F6] animate-bounce" style={{ animationDuration: '2s' }} />
@@ -364,7 +606,6 @@ export default function NewsPage() {
                   </div>
                 </section>
               )}
-
             </div>
           ) : null}
 

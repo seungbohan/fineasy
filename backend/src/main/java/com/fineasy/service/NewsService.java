@@ -5,6 +5,9 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fineasy.dto.response.NewsAnalysisResponse;
 import com.fineasy.dto.response.NewsArticleResponse;
+import com.fineasy.dto.response.NewsCountResponse;
+import com.fineasy.dto.response.SentimentTrendResponse;
+import com.fineasy.dto.response.StockNewsSummaryResponse;
 import com.fineasy.dto.response.WatchlistNewsResponse;
 import com.fineasy.entity.BokTermEntity;
 import com.fineasy.entity.NewsArticleAnalysisEntity;
@@ -27,10 +30,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.Collection;
-import java.util.List;
-import java.util.Optional;
+import java.util.*;
+import java.util.stream.Collectors;
 
 @Service
 @Transactional(readOnly = true)
@@ -40,9 +43,15 @@ public class NewsService {
 
     private static final Duration NEWS_ANALYSIS_CACHE_TTL = Duration.ofHours(24);
 
+    private static final Duration STOCK_SUMMARY_CACHE_TTL = Duration.ofHours(1);
+
     private static final String NEWS_ANALYSIS_CACHE_PREFIX = "news:analysis:";
 
+    private static final String STOCK_SUMMARY_CACHE_PREFIX = "news:stock-summary:";
+
     private static final int MAX_TOKENS_NEWS_ANALYSIS = 600;
+
+    private static final int MAX_TOKENS_STOCK_SUMMARY = 300;
 
     private static final int MIN_TAGGED_NEWS_FOR_SKIP_FALLBACK = 3;
 
@@ -196,6 +205,120 @@ public class NewsService {
         return articles.stream()
                 .map(this::toWatchlistNewsResponse)
                 .toList();
+    }
+
+    public NewsCountResponse getLatestNewsCount(LocalDateTime since) {
+        long count = newsArticleRepository.countNewsSince(since);
+        return new NewsCountResponse(count, since);
+    }
+
+    public StockNewsSummaryResponse getStockNewsSummary(String stockCode) {
+        String cacheKey = STOCK_SUMMARY_CACHE_PREFIX + stockCode;
+
+        StockNewsSummaryResponse cached = redisCacheHelper.getFromCache(
+                cacheKey, StockNewsSummaryResponse.class);
+        if (cached != null) {
+            log.debug("Stock news summary cache hit for stockCode: {}", stockCode);
+            return cached;
+        }
+
+        LocalDateTime since = LocalDateTime.now().minusHours(24);
+        List<NewsArticleEntity> recentNews = newsArticleRepository
+                .findByStockCodeSince(stockCode, since);
+
+        if (recentNews.isEmpty()) {
+            StockNewsSummaryResponse empty = StockNewsSummaryResponse.empty(stockCode);
+            redisCacheHelper.putToCache(cacheKey, empty, STOCK_SUMMARY_CACHE_TTL);
+            return empty;
+        }
+
+        if (openAiClient == null || promptBuilder == null) {
+            log.warn("OpenAI not configured, returning empty stock news summary");
+            return StockNewsSummaryResponse.empty(stockCode);
+        }
+
+        try {
+            List<String> titles = recentNews.stream()
+                    .map(NewsArticleEntity::getTitle)
+                    .toList();
+
+            String stockName = stockRepository.findByStockCode(stockCode)
+                    .map(stock -> stock.getStockName())
+                    .orElse(stockCode);
+
+            String systemPrompt = promptBuilder.getStockNewsSummarySystemPrompt();
+            String userPrompt = promptBuilder.buildStockNewsSummaryPrompt(
+                    stockName, stockCode, titles);
+
+            String aiResponse = openAiClient.chat(systemPrompt, userPrompt, MAX_TOKENS_STOCK_SUMMARY);
+            String summary = parseSummaryResponse(aiResponse);
+
+            StockNewsSummaryResponse response = new StockNewsSummaryResponse(
+                    stockCode, summary, recentNews.size(),
+                    LocalDateTime.now(), StockNewsSummaryResponse.AI_DISCLAIMER);
+
+            redisCacheHelper.putToCache(cacheKey, response, STOCK_SUMMARY_CACHE_TTL);
+            return response;
+        } catch (Exception e) {
+            log.error("Failed to generate stock news summary for {}: {}",
+                    stockCode, e.getMessage(), e);
+            return StockNewsSummaryResponse.empty(stockCode);
+        }
+    }
+
+    public SentimentTrendResponse getSentimentTrend(String stockCode, int days) {
+        LocalDateTime since = LocalDateTime.now().minusDays(days);
+        List<NewsArticleEntity> articles = newsArticleRepository
+                .findByStockCodeWithSentimentSince(stockCode, since);
+
+        // Group articles by date
+        Map<LocalDate, List<NewsArticleEntity>> grouped = articles.stream()
+                .filter(a -> a.getPublishedAt() != null)
+                .collect(Collectors.groupingBy(
+                        a -> a.getPublishedAt().toLocalDate(),
+                        TreeMap::new,
+                        Collectors.toList()));
+
+        List<SentimentTrendResponse.DailySentiment> trend = grouped.entrySet().stream()
+                .map(entry -> {
+                    LocalDate date = entry.getKey();
+                    List<NewsArticleEntity> dayArticles = entry.getValue();
+
+                    double avgScore = dayArticles.stream()
+                            .mapToDouble(a -> a.getSentimentScore() != null ? a.getSentimentScore() : 0.5)
+                            .average()
+                            .orElse(0.5);
+
+                    int positive = 0, negative = 0, neutral = 0;
+                    for (NewsArticleEntity a : dayArticles) {
+                        if (a.getSentiment() != null) {
+                            switch (a.getSentiment()) {
+                                case POSITIVE -> positive++;
+                                case NEGATIVE -> negative++;
+                                case NEUTRAL -> neutral++;
+                            }
+                        } else {
+                            neutral++;
+                        }
+                    }
+
+                    return new SentimentTrendResponse.DailySentiment(
+                            date, Math.round(avgScore * 100.0) / 100.0,
+                            dayArticles.size(), positive, negative, neutral);
+                })
+                .toList();
+
+        return new SentimentTrendResponse(stockCode, days, trend);
+    }
+
+    private String parseSummaryResponse(String aiResponse) {
+        try {
+            com.fasterxml.jackson.databind.JsonNode root = objectMapper.readTree(aiResponse);
+            return root.path("summary").asText("요약을 생성할 수 없습니다.");
+        } catch (Exception e) {
+            log.error("Failed to parse stock summary response: {}", aiResponse, e);
+            return "요약을 생성할 수 없습니다.";
+        }
     }
 
     @Transactional

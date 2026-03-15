@@ -50,6 +50,8 @@ export interface NewsArticle {
   sentimentScore: number;
   originalUrl: string;
   stockCodes?: string[];
+  taggedStocks?: TaggedStock[];
+  isBreaking?: boolean;
 }
 
 export interface BokTerm {
@@ -293,4 +295,51 @@ export interface User {
   email: string;
   nickname: string;
   createdAt: string;
+}
+
+/** Tagged stock reference in news articles */
+export interface TaggedStock {
+  stockCode: string;
+  stockName: string;
+}
+
+/** New news count since a given timestamp */
+export interface NewNewsCount {
+  count: number;
+  since: string;
+}
+
+/** AI-generated stock news summary */
+export interface StockNewsSummary {
+  stockCode: string;
+  summary: string;
+  generatedAt: string;
+  articleCount: number;
+}
+
+/** Single data point for sentiment trend */
+export interface SentimentTrendPoint {
+  date: string;
+  score: number;
+  articleCount: number;
+}
+
+/** Sentiment trend response */
+export interface SentimentTrendResponse {
+  stockCode: string;
+  points: SentimentTrendPoint[];
+  averageScore: number;
+}
+
+/** Alert keyword for custom keyword management */
+export interface AlertKeyword {
+  id: number;
+  keyword: string;
+  createdAt: string;
+}
+
+/** Alert keywords response */
+export interface AlertKeywordsResponse {
+  keywords: AlertKeyword[];
+  maxCount: number;
 }

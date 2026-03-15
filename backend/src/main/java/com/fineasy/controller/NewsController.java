@@ -1,8 +1,8 @@
 package com.fineasy.controller;
 
-import com.fineasy.dto.response.NewsAnalysisResponse;
-import com.fineasy.dto.response.NewsArticleResponse;
-import com.fineasy.dto.response.WatchlistNewsResponse;
+import com.fineasy.dto.response.*;
+import com.fineasy.security.AuthenticatedUser;
+import com.fineasy.service.KeywordAlertService;
 import com.fineasy.service.NewsService;
 import com.fineasy.entity.Sentiment;
 import com.fineasy.dto.ApiResponse;
@@ -10,11 +10,15 @@ import com.fineasy.dto.PageResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Positive;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 @RestController
@@ -24,9 +28,12 @@ import java.util.List;
 public class NewsController {
 
     private final NewsService newsService;
+    private final KeywordAlertService keywordAlertService;
 
-    public NewsController(NewsService newsService) {
+    public NewsController(NewsService newsService,
+                           KeywordAlertService keywordAlertService) {
         this.newsService = newsService;
+        this.keywordAlertService = keywordAlertService;
     }
 
     @GetMapping
@@ -61,6 +68,39 @@ public class NewsController {
             @RequestParam(defaultValue = "8") @Min(1) int size) {
         return ResponseEntity.ok(ApiResponse.success(
                 newsService.getWatchlistNews(stockCodes, size)));
+    }
+
+    @GetMapping("/latest-count")
+    @Operation(summary = "Get count of new articles since a given timestamp")
+    public ResponseEntity<ApiResponse<NewsCountResponse>> getLatestNewsCount(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime since) {
+        return ResponseEntity.ok(ApiResponse.success(
+                newsService.getLatestNewsCount(since)));
+    }
+
+    @GetMapping("/stock-summary/{stockCode}")
+    @Operation(summary = "Get AI-generated one-line summary of recent news for a stock")
+    public ResponseEntity<ApiResponse<StockNewsSummaryResponse>> getStockNewsSummary(
+            @PathVariable @NotBlank String stockCode) {
+        return ResponseEntity.ok(ApiResponse.success(
+                newsService.getStockNewsSummary(stockCode)));
+    }
+
+    @GetMapping("/sentiment-trend/{stockCode}")
+    @Operation(summary = "Get daily sentiment trend for a stock")
+    public ResponseEntity<ApiResponse<SentimentTrendResponse>> getSentimentTrend(
+            @PathVariable @NotBlank String stockCode,
+            @RequestParam(defaultValue = "30") @Min(1) int days) {
+        return ResponseEntity.ok(ApiResponse.success(
+                newsService.getSentimentTrend(stockCode, days)));
+    }
+
+    @GetMapping("/keyword-matches")
+    @Operation(summary = "Get news matching user keyword alerts")
+    public ResponseEntity<ApiResponse<List<NewsArticleResponse>>> getKeywordMatchedNews(
+            @AuthenticationPrincipal AuthenticatedUser user) {
+        return ResponseEntity.ok(ApiResponse.success(
+                keywordAlertService.getKeywordMatchedNews(user.id())));
     }
 
     @GetMapping("/macro")

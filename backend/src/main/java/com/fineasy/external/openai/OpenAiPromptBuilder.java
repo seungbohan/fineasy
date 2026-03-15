@@ -129,6 +129,22 @@ public class OpenAiPromptBuilder {
             }
             """;
 
+    private static final String STOCK_NEWS_SUMMARY_SYSTEM_PROMPT = """
+            당신은 금융 뉴스 요약 전문가입니다. 특정 종목과 관련된 최근 뉴스들을 분석하여
+            초보 투자자가 빠르게 파악할 수 있는 한줄 요약을 제공하세요.
+
+            규칙:
+            - 핵심 이슈를 1~2문장으로 간결하게 요약
+            - 전문 용어는 괄호 안에 쉬운 설명 추가
+            - 투자 권유 문구는 절대 포함하지 마세요
+            - 응답은 반드시 아래 JSON 형식으로 제공하세요
+
+            응답 JSON 구조:
+            {
+              "summary": "종목 관련 뉴스 한줄 요약 (최대 200자)"
+            }
+            """;
+
     private static final String SENTIMENT_SYSTEM_PROMPT = """
             당신은 금융 뉴스 분석 전문가입니다. 다음 뉴스 제목들을 분석하세요.
 
@@ -388,6 +404,22 @@ public class OpenAiPromptBuilder {
 
     public String getNewsAnalysisSystemPrompt() {
         return NEWS_ANALYSIS_SYSTEM_PROMPT;
+    }
+
+    public String getStockNewsSummarySystemPrompt() {
+        return STOCK_NEWS_SUMMARY_SYSTEM_PROMPT;
+    }
+
+    public String buildStockNewsSummaryPrompt(String stockName, String stockCode,
+                                               List<String> newsTitles) {
+        StringBuilder sb = new StringBuilder();
+        sb.append(String.format("종목: %s (%s)\n\n", stockName, stockCode));
+        sb.append("### 최근 24시간 관련 뉴스 헤드라인\n");
+        for (int i = 0; i < newsTitles.size(); i++) {
+            sb.append(String.format("%d. %s\n", i + 1, newsTitles.get(i)));
+        }
+        sb.append("\n위 뉴스들을 종합하여 이 종목의 현재 상황을 한줄로 요약해 주세요. JSON 형식으로 응답하세요.");
+        return sb.toString();
     }
 
     public String getSentimentSystemPrompt() {

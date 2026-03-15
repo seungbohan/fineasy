@@ -15,6 +15,8 @@ import {
   BarChart3,
   FileText,
   Calendar,
+  Clock,
+  Megaphone,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -32,9 +34,10 @@ import { StockChart } from '@/components/stocks/stock-chart';
 import { CompanyAnalysisCard } from '@/components/stocks/company-analysis-card';
 import { FundamentalAnalysis } from '@/components/stocks/fundamental-analysis';
 import { useStockDetail } from '@/hooks/use-stocks';
-import { useStockNews, useNewsAnalysis } from '@/hooks/use-news';
+import { useStockNews, useNewsAnalysis, useStockNewsSummary, useSentimentTrend } from '@/hooks/use-news';
 import { useAnalysisReport } from '@/hooks/use-analysis';
 import { useDomesticDisclosure, useOverseasDisclosure } from '@/hooks/use-disclosure';
+import { SentimentTrendChart } from '@/components/shared/sentiment-trend-chart';
 import { PredictionCard } from '@/components/stocks/prediction-card';
 import { useRouter } from 'next/navigation';
 import { useWatchlistStore } from '@/stores/watchlist-store';
@@ -97,8 +100,8 @@ export default function StockDetailPage({
   const [sheetOpen, setSheetOpen] = useState(false);
   const { data: analysisData, isLoading: isAnalysisLoading, isError: isAnalysisError } = useNewsAnalysis(selectedNewsId);
 
-  /** Active tab: 'info' (default) or 'disclosure' */
-  const [activeTab, setActiveTab] = useState<'info' | 'disclosure'>('info');
+  /** Active tab: 'info' (default), 'disclosure', or 'timeline' */
+  const [activeTab, setActiveTab] = useState<'info' | 'disclosure' | 'timeline'>('info');
 
   const watched = isWatched(stockCode);
   const isDomestic = isDomesticStock(stockCode);
@@ -223,6 +226,17 @@ export default function StockDetailPage({
             <FileText className="h-3.5 w-3.5" />
             공시
           </button>
+          <button
+            onClick={() => setActiveTab('timeline')}
+            className={`flex-1 rounded-lg py-2 text-[13px] font-semibold transition-all flex items-center justify-center gap-1.5 ${
+              activeTab === 'timeline'
+                ? 'bg-white text-gray-900 shadow-sm'
+                : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            <Clock className="h-3.5 w-3.5" />
+            타임라인
+          </button>
         </div>
       </div>
 
@@ -242,8 +256,10 @@ export default function StockDetailPage({
           isAnalysisLoading={isAnalysisLoading}
           isAnalysisError={isAnalysisError}
         />
-      ) : (
+      ) : activeTab === 'disclosure' ? (
         <DisclosureTab stockCode={stockCode} isDomestic={isDomestic} />
+      ) : (
+        <TimelineTab stockCode={stockCode} isDomestic={isDomestic} />
       )}
 
       {/* News Analysis Sheet */}
@@ -455,6 +471,12 @@ function InfoTab({
 
       <PredictionCard stockCode={stockCode} />
 
+      {/* Feature 4: AI News Summary Card */}
+      <StockNewsSummaryCard stockCode={stockCode} />
+
+      {/* Feature 5: Sentiment Trend Chart */}
+      <SentimentTrendSection stockCode={stockCode} />
+
       {/* Related news section */}
       <Card className="rounded-xl border-0 bg-white shadow-none">
         <CardContent className="p-4">
@@ -607,6 +629,286 @@ function DomesticDisclosureList({ stockCode }: { stockCode: string }) {
             </div>
           </a>
         ))}
+      </div>
+    </div>
+  );
+}
+
+/* ────────────────────────────────────────────────────────
+ * StockNewsSummaryCard - AI-generated stock news summary
+ * ──────────────────────────────────────────────────────── */
+
+function StockNewsSummaryCard({ stockCode }: { stockCode: string }) {
+  const { data, isLoading } = useStockNewsSummary(stockCode);
+
+  if (isLoading) {
+    return (
+      <Card className="rounded-xl border-0 bg-white shadow-none">
+        <CardContent className="p-4 space-y-3">
+          <div className="flex items-center gap-2">
+            <Skeleton className="h-5 w-5 rounded" />
+            <Skeleton className="h-5 w-32" />
+          </div>
+          <Skeleton className="h-4 w-full" />
+          <Skeleton className="h-4 w-4/5" />
+          <Skeleton className="h-4 w-3/5" />
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (!data) return null;
+
+  return (
+    <Card className="rounded-xl border-0 bg-gradient-to-br from-blue-50/60 to-white shadow-none overflow-hidden relative">
+      <div className="absolute -right-8 -top-8 h-24 w-24 rounded-full bg-blue-100/30 blur-2xl pointer-events-none" />
+      <CardContent className="p-4 relative z-10">
+        <div className="mb-3 flex items-center gap-2">
+          <Sparkles className="h-4 w-4 text-[#3182F6]" />
+          <h2 className="text-[15px] font-bold text-gray-900">
+            오늘의 뉴스 요약
+          </h2>
+          <span className="rounded-full bg-blue-50 px-2.5 py-0.5 text-[11px] font-semibold text-[#3182F6]">
+            AI
+          </span>
+        </div>
+        <p className="text-sm text-gray-700 leading-relaxed bg-blue-50/50 rounded-xl p-3">
+          {data.summary}
+        </p>
+        <p className="mt-2 text-[11px] text-gray-400">
+          {data.articleCount}건의 뉴스 기반 &middot; {formatRelativeTime(data.generatedAt)}
+        </p>
+      </CardContent>
+    </Card>
+  );
+}
+
+/* ────────────────────────────────────────────────────────
+ * SentimentTrendSection - News sentiment trend chart
+ * ──────────────────────────────────────────────────────── */
+
+function SentimentTrendSection({ stockCode }: { stockCode: string }) {
+  const { data, isLoading } = useSentimentTrend(stockCode);
+
+  if (isLoading) {
+    return (
+      <Card className="rounded-xl border-0 bg-white shadow-none">
+        <CardContent className="p-4 space-y-3">
+          <Skeleton className="h-5 w-36" />
+          <Skeleton className="h-[180px] w-full rounded-lg" />
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (!data || data.points.length < 2) return null;
+
+  return (
+    <Card className="rounded-xl border-0 bg-white shadow-none">
+      <CardContent className="p-4">
+        <div className="mb-3 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <TrendingUp className="h-4 w-4 text-[#3182F6]" />
+            <h2 className="text-[15px] font-bold text-gray-900">
+              뉴스 감성 트렌드
+            </h2>
+          </div>
+          <span className="text-[11px] text-gray-400">
+            평균{' '}
+            <span className={data.averageScore >= 0.5 ? 'text-up font-semibold' : 'text-down font-semibold'}>
+              {(data.averageScore * 100).toFixed(0)}점
+            </span>
+          </span>
+        </div>
+        <SentimentTrendChart points={data.points} />
+      </CardContent>
+    </Card>
+  );
+}
+
+/* ────────────────────────────────────────────────────────
+ * TimelineTab - Combined disclosure + news timeline
+ * ──────────────────────────────────────────────────────── */
+
+interface TimelineItem {
+  id: string;
+  type: 'news' | 'disclosure';
+  title: string;
+  date: string;
+  meta?: string;
+  url?: string;
+  sentiment?: 'POSITIVE' | 'NEGATIVE' | 'NEUTRAL';
+  disclosureType?: string;
+}
+
+function TimelineTab({
+  stockCode,
+  isDomestic,
+}: {
+  stockCode: string;
+  isDomestic: boolean;
+}) {
+  const { data: news, isLoading: isNewsLoading } = useStockNews(stockCode);
+  const { data: domesticDisclosures, isLoading: isDomLoading } =
+    useDomesticDisclosure(isDomestic ? stockCode : '');
+  const { data: overseasDisclosures, isLoading: isOverseasLoading } =
+    useOverseasDisclosure(!isDomestic ? stockCode : '');
+
+  const isLoading = isNewsLoading || (isDomestic ? isDomLoading : isOverseasLoading);
+
+  if (isLoading) {
+    return (
+      <div className="p-4 space-y-4">
+        {Array.from({ length: 6 }).map((_, i) => (
+          <div key={i} className="flex gap-3">
+            <div className="flex flex-col items-center">
+              <Skeleton className="h-8 w-8 rounded-full" />
+              <Skeleton className="h-12 w-0.5" />
+            </div>
+            <div className="flex-1 space-y-2 pb-4">
+              <Skeleton className="h-4 w-full" />
+              <Skeleton className="h-3 w-24" />
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  /* Build unified timeline items */
+  const items: TimelineItem[] = [];
+
+  (news ?? []).forEach((article) => {
+    items.push({
+      id: `news-${article.id}`,
+      type: 'news',
+      title: article.title,
+      date: article.publishedAt,
+      meta: article.sourceName,
+      url: article.originalUrl,
+      sentiment: article.sentiment,
+    });
+  });
+
+  if (isDomestic && domesticDisclosures) {
+    domesticDisclosures.forEach((d) => {
+      items.push({
+        id: `disc-${d.id}`,
+        type: 'disclosure',
+        title: d.title,
+        date: d.filingDate,
+        meta: d.submitter,
+        url: d.dartUrl,
+        disclosureType: d.disclosureType,
+      });
+    });
+  }
+
+  if (!isDomestic && overseasDisclosures) {
+    overseasDisclosures.forEach((d) => {
+      items.push({
+        id: `disc-${d.id}`,
+        type: 'disclosure',
+        title: d.title,
+        date: d.filingDate,
+        url: d.edgarUrl,
+        disclosureType: d.filingType,
+      });
+    });
+  }
+
+  /* Sort by date descending */
+  items.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+  if (items.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-2 px-4 py-16">
+        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gray-100">
+          <Clock className="h-6 w-6 text-gray-300" />
+        </div>
+        <p className="text-sm text-gray-500">타임라인 데이터가 없습니다</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-4">
+      <div className="space-y-0">
+        {items.map((item, idx) => {
+          const isLast = idx === items.length - 1;
+          const isNews = item.type === 'news';
+
+          return (
+            <div key={item.id} className="flex gap-3">
+              {/* Timeline line + icon */}
+              <div className="flex flex-col items-center">
+                <div
+                  className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${
+                    isNews
+                      ? 'bg-blue-50'
+                      : 'bg-orange-50'
+                  }`}
+                >
+                  {isNews ? (
+                    <Newspaper className="h-3.5 w-3.5 text-[#3182F6]" />
+                  ) : (
+                    <Megaphone className="h-3.5 w-3.5 text-orange-500" />
+                  )}
+                </div>
+                {!isLast && (
+                  <div className="w-0.5 flex-1 bg-gray-100" />
+                )}
+              </div>
+
+              {/* Content */}
+              <div className={`flex-1 min-w-0 pb-4 ${isLast ? '' : 'border-b-0'}`}>
+                <div className="flex items-center gap-2 mb-1">
+                  <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${
+                    isNews
+                      ? 'bg-blue-50 text-[#3182F6]'
+                      : 'bg-orange-50 text-orange-600'
+                  }`}>
+                    {isNews ? '뉴스' : '공시'}
+                  </span>
+                  {item.disclosureType && (
+                    <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${getDisclosureTypeBadgeClass(item.disclosureType)}`}>
+                      {item.disclosureType}
+                    </span>
+                  )}
+                  {item.sentiment && (
+                    <SentimentBadge sentiment={item.sentiment} />
+                  )}
+                </div>
+
+                {item.url ? (
+                  <a
+                    href={item.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-[13px] font-medium text-gray-900 leading-snug line-clamp-2 hover:text-[#3182F6] transition-colors"
+                  >
+                    {item.title}
+                  </a>
+                ) : (
+                  <p className="text-[13px] font-medium text-gray-900 leading-snug line-clamp-2">
+                    {item.title}
+                  </p>
+                )}
+
+                <div className="mt-1 flex items-center gap-2">
+                  <span className="text-[11px] text-gray-400">
+                    {formatRelativeTime(item.date)}
+                  </span>
+                  {item.meta && (
+                    <span className="text-[11px] text-gray-400">
+                      {item.meta}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );

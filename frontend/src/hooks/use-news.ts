@@ -1,7 +1,13 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
-import { NewsArticle, NewsAnalysisResponse } from '@/types';
+import { useQuery, useInfiniteQuery } from '@tanstack/react-query';
+import {
+  NewsArticle,
+  NewsAnalysisResponse,
+  NewNewsCount,
+  StockNewsSummary,
+  SentimentTrendResponse,
+} from '@/types';
 import { apiClient } from '@/lib/api-client';
 
 interface PageResponse<T> {
@@ -21,6 +27,8 @@ interface NewsArticleApiResponse {
   publishedAt: string;
   sentiment: 'POSITIVE' | 'NEGATIVE' | 'NEUTRAL';
   sentimentScore: number;
+  taggedStocks?: { stockCode: string; stockName: string }[];
+  isBreaking?: boolean;
 }
 
 function toNewsArticle(raw: NewsArticleApiResponse): NewsArticle {
@@ -32,6 +40,8 @@ function toNewsArticle(raw: NewsArticleApiResponse): NewsArticle {
     sentiment: raw.sentiment,
     sentimentScore: raw.sentimentScore,
     originalUrl: raw.originalUrl,
+    taggedStocks: raw.taggedStocks,
+    isBreaking: raw.isBreaking,
   };
 }
 
@@ -118,5 +128,119 @@ export function useNewsAnalysis(newsId: number | null) {
     },
     enabled: newsId !== null,
     staleTime: 1000 * 60 * 30,
+  });
+}
+
+/**
+ * Infinite scroll hook for news page.
+ * Fetches paginated news with cursor-based pagination.
+ */
+export function useInfiniteNews(options?: {
+  sentiment?: 'POSITIVE' | 'NEGATIVE' | 'NEUTRAL';
+  stockCode?: string;
+  size?: number;
+}) {
+  const { sentiment, stockCode, size = 10 } = options || {};
+
+  return useInfiniteQuery<{ items: NewsArticle[]; total: number }>({
+    queryKey: ['news', 'infinite', sentiment, stockCode, size],
+    queryFn: async ({ pageParam }) => {
+      const params = new URLSearchParams();
+      params.set('page', String(pageParam));
+      params.set('size', String(size));
+      if (sentiment) params.set('sentiment', sentiment);
+      if (stockCode) params.set('stockCode', stockCode);
+
+      const res = await apiClient.get<PageResponse<NewsArticleApiResponse>>(
+        `/news?${params.toString()}`
+      );
+
+      return {
+        items: res.content.map(toNewsArticle),
+        total: res.totalElements,
+      };
+    },
+    initialPageParam: 1,
+    getNextPageParam: (lastPage, allPages) => {
+      const totalFetched = allPages.reduce((sum, p) => sum + p.items.length, 0);
+      if (totalFetched >= lastPage.total) return undefined;
+      return allPages.length + 1;
+    },
+  });
+}
+
+/**
+ * Hook to check for new news articles since a given timestamp.
+ * Polls every 30 seconds.
+ */
+export function useNewNewsCount(since: string | null) {
+  return useQuery<NewNewsCount>({
+    queryKey: ['news', 'latestCount', since],
+    queryFn: () =>
+      apiClient.get<NewNewsCount>(
+        `/news/latest-count?since=${encodeURIComponent(since!)}`
+      ),
+    enabled: !!since,
+    refetchInterval: 30 * 1000,
+    staleTime: 10 * 1000,
+  });
+}
+
+/**
+ * Fetch watchlist-filtered news for "my stocks" tab.
+ * Endpoint: GET /api/v1/news/watchlist
+ */
+export function useWatchlistFilteredNews(
+  stockCodes: string[],
+  page = 1,
+  size = 10
+) {
+  return useQuery<{ items: NewsArticle[]; total: number }>({
+    queryKey: ['news', 'watchlistFiltered', stockCodes, page, size],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      params.set('stockCodes', stockCodes.join(','));
+      params.set('page', String(page));
+      params.set('size', String(size));
+      const res = await apiClient.get<PageResponse<NewsArticleApiResponse>>(
+        `/news/watchlist?${params.toString()}`
+      );
+      return {
+        items: res.content.map(toNewsArticle),
+        total: res.totalElements,
+      };
+    },
+    enabled: stockCodes.length > 0,
+    staleTime: 2 * 60 * 1000,
+  });
+}
+
+/**
+ * AI-generated stock news summary for a specific stock.
+ * Endpoint: GET /api/v1/news/stock-summary/{stockCode}
+ */
+export function useStockNewsSummary(stockCode: string) {
+  return useQuery<StockNewsSummary>({
+    queryKey: ['news', 'stockSummary', stockCode],
+    queryFn: () =>
+      apiClient.get<StockNewsSummary>(`/news/stock-summary/${stockCode}`),
+    enabled: !!stockCode,
+    staleTime: 30 * 60 * 1000,
+  });
+}
+
+/**
+ * Sentiment trend for a stock over N days.
+ * Endpoint: GET /api/v1/news/sentiment-trend/{stockCode}?days=30
+ */
+export function useSentimentTrend(stockCode: string, days = 30) {
+  return useQuery<SentimentTrendResponse>({
+    queryKey: ['news', 'sentimentTrend', stockCode, days],
+    queryFn: () =>
+      apiClient.get<SentimentTrendResponse>(
+        `/news/sentiment-trend/${stockCode}?days=${days}`
+      ),
+    enabled: !!stockCode,
+    staleTime: 60 * 60 * 1000,
   });
 }

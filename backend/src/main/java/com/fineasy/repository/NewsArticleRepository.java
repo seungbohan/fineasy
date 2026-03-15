@@ -8,6 +8,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.List;
 import java.util.Set;
@@ -60,4 +61,28 @@ public interface NewsArticleRepository extends JpaRepository<NewsArticleEntity, 
             "WHERE s.stockCode IN :stockCodes ORDER BY n.publishedAt DESC")
     List<NewsArticleEntity> findByStockCodesIn(
             @Param("stockCodes") Collection<String> stockCodes, Pageable pageable);
+
+    @Query("SELECT n FROM NewsArticleEntity n JOIN n.taggedStocks s " +
+            "WHERE s.stockCode = :stockCode AND n.publishedAt >= :since " +
+            "ORDER BY n.publishedAt DESC")
+    List<NewsArticleEntity> findByStockCodeSince(
+            @Param("stockCode") String stockCode,
+            @Param("since") LocalDateTime since);
+
+    @Query("SELECT COUNT(n) FROM NewsArticleEntity n WHERE n.publishedAt >= :since")
+    long countNewsSince(@Param("since") LocalDateTime since);
+
+    @Query("SELECT n FROM NewsArticleEntity n WHERE " +
+            "LOWER(n.title) LIKE LOWER(CONCAT('%', :keyword, '%')) " +
+            "ORDER BY n.publishedAt DESC")
+    List<NewsArticleEntity> findByTitleContainingKeyword(
+            @Param("keyword") String keyword, Pageable pageable);
+
+    @Query("SELECT n FROM NewsArticleEntity n JOIN n.taggedStocks s " +
+            "WHERE s.stockCode = :stockCode AND n.publishedAt >= :since " +
+            "AND n.sentimentScore IS NOT NULL " +
+            "ORDER BY n.publishedAt ASC")
+    List<NewsArticleEntity> findByStockCodeWithSentimentSince(
+            @Param("stockCode") String stockCode,
+            @Param("since") LocalDateTime since);
 }
