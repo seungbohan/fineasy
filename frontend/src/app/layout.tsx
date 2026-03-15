@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next';
 import { Noto_Sans_KR, Geist_Mono } from 'next/font/google';
+import Script from 'next/script';
 import './globals.css';
 import { Providers } from '@/components/providers';
 import { Header } from '@/components/layout/header';
@@ -20,7 +21,7 @@ import {
 const notoSansKR = Noto_Sans_KR({
   variable: '--font-noto-sans-kr',
   subsets: ['latin'],
-  weight: ['300', '400', '500', '600', '700'],
+  weight: ['400', '500', '700'],
 });
 
 const geistMono = Geist_Mono({
@@ -125,11 +126,6 @@ export default function RootLayout({
         <WebsiteJsonLd />
         <OrganizationJsonLd />
         <FinancialServiceJsonLd />
-        <script
-          async
-          src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-1140877243889064"
-          crossOrigin="anonymous"
-        />
       </head>
       <body
         className={`${notoSansKR.variable} ${geistMono.variable} antialiased`}
@@ -141,6 +137,11 @@ export default function RootLayout({
             <BottomNav />
           </div>
         </Providers>
+        <Script
+          src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-1140877243889064"
+          strategy="afterInteractive"
+          crossOrigin="anonymous"
+        />
       </body>
     </html>
   );
