@@ -262,6 +262,27 @@ export interface CryptoMarketResponse {
   updatedAt: string;
 }
 
+/** DART domestic disclosure item */
+export interface DomesticDisclosure {
+  id: number;
+  stockCode: string;
+  title: string;
+  submitter: string;
+  filingDate: string;
+  disclosureType: string;
+  dartUrl: string;
+}
+
+/** SEC EDGAR overseas disclosure item */
+export interface OverseasDisclosure {
+  id: number;
+  stockCode: string;
+  title: string;
+  filingType: string;
+  filingDate: string;
+  edgarUrl: string;
+}
+
 export interface WatchlistItem {
   stockCode: string;
   addedAt: string;

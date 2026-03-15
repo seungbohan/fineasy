@@ -2,7 +2,20 @@
 
 import { use, useState } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, Heart, ExternalLink, Sparkles, TrendingUp, Tag, AlertCircle, Globe, Newspaper, BarChart3 } from 'lucide-react';
+import {
+  ArrowLeft,
+  Heart,
+  ExternalLink,
+  Sparkles,
+  TrendingUp,
+  Tag,
+  AlertCircle,
+  Globe,
+  Newspaper,
+  BarChart3,
+  FileText,
+  Calendar,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -17,11 +30,11 @@ import {
 import { SentimentBadge } from '@/components/shared/sentiment-badge';
 import { StockChart } from '@/components/stocks/stock-chart';
 import { CompanyAnalysisCard } from '@/components/stocks/company-analysis-card';
-
 import { FundamentalAnalysis } from '@/components/stocks/fundamental-analysis';
 import { useStockDetail } from '@/hooks/use-stocks';
 import { useStockNews, useNewsAnalysis } from '@/hooks/use-news';
 import { useAnalysisReport } from '@/hooks/use-analysis';
+import { useDomesticDisclosure, useOverseasDisclosure } from '@/hooks/use-disclosure';
 import { PredictionCard } from '@/components/stocks/prediction-card';
 import { useRouter } from 'next/navigation';
 import { useWatchlistStore } from '@/stores/watchlist-store';
@@ -35,6 +48,37 @@ import {
   getPriceArrow,
   getCurrencyFromMarket,
 } from '@/lib/format';
+import type { DomesticDisclosure, OverseasDisclosure } from '@/types';
+
+/** Returns true if stockCode is a domestic Korean stock (6-digit number) */
+function isDomesticStock(stockCode: string): boolean {
+  return /^\d{6}$/.test(stockCode);
+}
+
+/** Format date string to localized short format */
+function formatDate(dateStr: string): string {
+  const date = new Date(dateStr);
+  return date.toLocaleDateString('ko-KR', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+}
+
+/** Badge color mapping for disclosure types */
+function getDisclosureTypeBadgeClass(type: string): string {
+  const lower = type.toLowerCase();
+  if (lower.includes('정기') || lower === '10-k' || lower === '10-q') {
+    return 'bg-blue-50 text-[#3182F6]';
+  }
+  if (lower.includes('주요') || lower === '8-k') {
+    return 'bg-red-50 text-red-500';
+  }
+  if (lower.includes('지분') || lower.includes('소유')) {
+    return 'bg-amber-50 text-amber-600';
+  }
+  return 'bg-gray-100 text-gray-600';
+}
 
 export default function StockDetailPage({
   params,
@@ -53,7 +97,11 @@ export default function StockDetailPage({
   const [sheetOpen, setSheetOpen] = useState(false);
   const { data: analysisData, isLoading: isAnalysisLoading, isError: isAnalysisError } = useNewsAnalysis(selectedNewsId);
 
+  /** Active tab: 'info' (default) or 'disclosure' */
+  const [activeTab, setActiveTab] = useState<'info' | 'disclosure'>('info');
+
   const watched = isWatched(stockCode);
+  const isDomestic = isDomesticStock(stockCode);
 
   if (isLoading) {
     return (
@@ -84,6 +132,7 @@ export default function StockDetailPage({
 
   return (
     <div className="mx-auto max-w-screen-xl">
+      {/* Sticky header */}
       <div className="sticky top-16 z-30 bg-white/80 backdrop-blur-xl shadow-[0_1px_3px_rgba(0,0,0,0.04)] px-4 py-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -118,16 +167,15 @@ export default function StockDetailPage({
                 ? 'text-red-500 hover:text-red-600'
                 : 'text-gray-300 hover:text-gray-400'
             }`}
-            aria-label={
-              watched ? '관심 종목 해제' : '관심 종목 추가'
-            }
+            aria-label={watched ? '관심 종목 해제' : '관심 종목 추가'}
           >
             <Heart className={`h-6 w-6 ${watched ? 'fill-current' : ''}`} />
           </button>
         </div>
       </div>
 
-      <div className="space-y-2 p-4">
+      {/* Price section - always visible */}
+      <div className="px-4 pt-4 pb-2">
         <div className="px-4 py-3 rounded-2xl bg-gradient-to-br from-gray-50/80 to-white">
           <p className="text-3xl font-bold tabular-nums text-gray-900">
             {isUsd
@@ -149,125 +197,56 @@ export default function StockDetailPage({
             {formatChangeRate(stock.changeRate)})
           </p>
         </div>
-
-        <div className="rounded-xl bg-white overflow-hidden">
-          <StockChart stockCode={stockCode} market={stock.market} />
-        </div>
-
-        <CompanyAnalysisCard stockCode={stockCode} stock={stock} />
-
-        <FundamentalAnalysis stockCode={stockCode} market={stock.market} />
-
-        {report?.technicalSignals && (
-          <Card className="rounded-xl border-0 bg-white shadow-none">
-            <CardContent className="p-4">
-              <div className="mb-3 flex items-center gap-2">
-                <Newspaper className="h-4.5 w-4.5 text-[#3182F6]" />
-                <h2 className="text-[15px] font-bold text-gray-900">
-                  뉴스 기반 분석
-                </h2>
-                <span className="rounded-full bg-blue-50 px-2.5 py-0.5 text-[11px] font-semibold text-[#3182F6]">
-                  AI
-                </span>
-              </div>
-
-              {report.technicalSignals.newsAnalysis && (
-                <div className="mb-3">
-                  <div className="flex items-center gap-2 mb-1.5">
-                    <div className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-50">
-                      <Newspaper className="h-3 w-3 text-[#3182F6]" />
-                    </div>
-                    <span className="text-[13px] font-bold text-gray-700">뉴스 분석</span>
-                  </div>
-                  <p className="text-sm text-gray-700 leading-relaxed bg-blue-50/50 rounded-xl p-3">
-                    {report.technicalSignals.newsAnalysis}
-                  </p>
-                </div>
-              )}
-
-              {report.technicalSignals.macroImpact && (
-                <div className="mb-3">
-                  <div className="flex items-center gap-2 mb-1.5">
-                    <div className="flex h-6 w-6 items-center justify-center rounded-full bg-amber-50">
-                      <BarChart3 className="h-3 w-3 text-amber-500" />
-                    </div>
-                    <span className="text-[13px] font-bold text-gray-700">거시경제 영향</span>
-                  </div>
-                  <p className="text-sm text-gray-700 leading-relaxed bg-amber-50/50 rounded-xl p-3">
-                    {report.technicalSignals.macroImpact}
-                  </p>
-                </div>
-              )}
-
-              {report.technicalSignals.globalEventImpact && (
-                <div className="mb-3">
-                  <div className="flex items-center gap-2 mb-1.5">
-                    <div className="flex h-6 w-6 items-center justify-center rounded-full bg-emerald-50">
-                      <Globe className="h-3 w-3 text-emerald-500" />
-                    </div>
-                    <span className="text-[13px] font-bold text-gray-700">글로벌 이벤트 영향</span>
-                  </div>
-                  <p className="text-sm text-gray-700 leading-relaxed bg-emerald-50/50 rounded-xl p-3">
-                    {report.technicalSignals.globalEventImpact}
-                  </p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        )}
-
-        <PredictionCard stockCode={stockCode} />
-
-        <Card className="rounded-xl border-0 bg-white shadow-none">
-          <CardContent className="p-4">
-            <h2 className="mb-3 text-[15px] font-bold text-gray-900">
-              관련 뉴스
-            </h2>
-            {news && news.length > 0 ? (
-              <div className="divide-y divide-gray-100">
-                {news.map((article) => (
-                  <button
-                    key={article.id}
-                    type="button"
-                    className="group flex w-full items-start gap-2 py-3 text-left transition-colors hover:bg-gray-50 -mx-1 px-1 rounded-lg"
-                    onClick={() => {
-                      setSelectedNewsId(article.id);
-                      setSheetOpen(true);
-                    }}
-                  >
-
-                    <span className={`mt-2 h-2 w-2 shrink-0 rounded-full ${
-                      article.sentiment === 'POSITIVE' ? 'bg-red-400' :
-                      article.sentiment === 'NEGATIVE' ? 'bg-blue-400' :
-                      'bg-gray-300'
-                    }`} />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-gray-900 line-clamp-2 leading-snug">
-                        {article.title}
-                      </p>
-                      <div className="mt-1.5 flex items-center gap-2">
-                        <SentimentBadge sentiment={article.sentiment} />
-                        <span className="text-[11px] text-gray-500">
-                          {article.sourceName}
-                        </span>
-                        <span className="text-[11px] text-gray-400">
-                          {formatRelativeTime(article.publishedAt)}
-                        </span>
-                      </div>
-                    </div>
-                    <Sparkles className="mt-1 h-3.5 w-3.5 shrink-0 text-gray-300 transition-colors group-hover:text-[#3182F6]" />
-                  </button>
-                ))}
-              </div>
-            ) : (
-              <p className="py-4 text-center text-sm text-gray-400">
-                관련 뉴스가 없습니다
-              </p>
-            )}
-          </CardContent>
-        </Card>
       </div>
 
+      {/* Tab navigation */}
+      <div className="px-4">
+        <div className="flex gap-1 rounded-xl bg-gray-100 p-1">
+          <button
+            onClick={() => setActiveTab('info')}
+            className={`flex-1 rounded-lg py-2 text-[13px] font-semibold transition-all ${
+              activeTab === 'info'
+                ? 'bg-white text-gray-900 shadow-sm'
+                : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            종목정보
+          </button>
+          <button
+            onClick={() => setActiveTab('disclosure')}
+            className={`flex-1 rounded-lg py-2 text-[13px] font-semibold transition-all flex items-center justify-center gap-1.5 ${
+              activeTab === 'disclosure'
+                ? 'bg-white text-gray-900 shadow-sm'
+                : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            <FileText className="h-3.5 w-3.5" />
+            공시
+          </button>
+        </div>
+      </div>
+
+      {/* Tab content */}
+      {activeTab === 'info' ? (
+        <InfoTab
+          stockCode={stockCode}
+          stock={stock}
+          news={news ?? null}
+          report={report ?? null}
+          isUsd={isUsd}
+          selectedNewsId={selectedNewsId}
+          setSelectedNewsId={setSelectedNewsId}
+          sheetOpen={sheetOpen}
+          setSheetOpen={setSheetOpen}
+          analysisData={analysisData ?? null}
+          isAnalysisLoading={isAnalysisLoading}
+          isAnalysisError={isAnalysisError}
+        />
+      ) : (
+        <DisclosureTab stockCode={stockCode} isDomestic={isDomestic} />
+      )}
+
+      {/* News Analysis Sheet */}
       <Sheet open={sheetOpen} onOpenChange={(open) => {
         setSheetOpen(open);
         if (!open) setSelectedNewsId(null);
@@ -353,7 +332,6 @@ export default function StockDetailPage({
                   </div>
                 </section>
               )}
-
             </div>
           ) : null}
 
@@ -372,6 +350,333 @@ export default function StockDetailPage({
           )}
         </SheetContent>
       </Sheet>
+    </div>
+  );
+}
+
+/* ────────────────────────────────────────────────────────
+ * InfoTab - existing stock detail content (chart, analysis, news)
+ * ──────────────────────────────────────────────────────── */
+
+function InfoTab({
+  stockCode,
+  stock,
+  news,
+  report,
+  isUsd,
+  selectedNewsId,
+  setSelectedNewsId,
+  sheetOpen,
+  setSheetOpen,
+  analysisData,
+  isAnalysisLoading,
+  isAnalysisError,
+}: {
+  stockCode: string;
+  stock: NonNullable<ReturnType<typeof useStockDetail>['data']>;
+  news: import('@/types').NewsArticle[] | null;
+  report: import('@/types').AnalysisReport | null;
+  isUsd: boolean;
+  selectedNewsId: number | null;
+  setSelectedNewsId: (id: number | null) => void;
+  sheetOpen: boolean;
+  setSheetOpen: (open: boolean) => void;
+  analysisData: import('@/types').NewsAnalysisResponse | null;
+  isAnalysisLoading: boolean;
+  isAnalysisError: boolean;
+}) {
+  return (
+    <div className="space-y-2 p-4">
+      <div className="rounded-xl bg-white overflow-hidden">
+        <StockChart stockCode={stockCode} market={stock.market} />
+      </div>
+
+      <CompanyAnalysisCard stockCode={stockCode} stock={stock} />
+
+      <FundamentalAnalysis stockCode={stockCode} market={stock.market} />
+
+      {report?.technicalSignals && (
+        <Card className="rounded-xl border-0 bg-white shadow-none">
+          <CardContent className="p-4">
+            <div className="mb-3 flex items-center gap-2">
+              <Newspaper className="h-4.5 w-4.5 text-[#3182F6]" />
+              <h2 className="text-[15px] font-bold text-gray-900">
+                뉴스 기반 분석
+              </h2>
+              <span className="rounded-full bg-blue-50 px-2.5 py-0.5 text-[11px] font-semibold text-[#3182F6]">
+                AI
+              </span>
+            </div>
+
+            {report.technicalSignals.newsAnalysis && (
+              <div className="mb-3">
+                <div className="flex items-center gap-2 mb-1.5">
+                  <div className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-50">
+                    <Newspaper className="h-3 w-3 text-[#3182F6]" />
+                  </div>
+                  <span className="text-[13px] font-bold text-gray-700">뉴스 분석</span>
+                </div>
+                <p className="text-sm text-gray-700 leading-relaxed bg-blue-50/50 rounded-xl p-3">
+                  {report.technicalSignals.newsAnalysis}
+                </p>
+              </div>
+            )}
+
+            {report.technicalSignals.macroImpact && (
+              <div className="mb-3">
+                <div className="flex items-center gap-2 mb-1.5">
+                  <div className="flex h-6 w-6 items-center justify-center rounded-full bg-amber-50">
+                    <BarChart3 className="h-3 w-3 text-amber-500" />
+                  </div>
+                  <span className="text-[13px] font-bold text-gray-700">거시경제 영향</span>
+                </div>
+                <p className="text-sm text-gray-700 leading-relaxed bg-amber-50/50 rounded-xl p-3">
+                  {report.technicalSignals.macroImpact}
+                </p>
+              </div>
+            )}
+
+            {report.technicalSignals.globalEventImpact && (
+              <div className="mb-3">
+                <div className="flex items-center gap-2 mb-1.5">
+                  <div className="flex h-6 w-6 items-center justify-center rounded-full bg-emerald-50">
+                    <Globe className="h-3 w-3 text-emerald-500" />
+                  </div>
+                  <span className="text-[13px] font-bold text-gray-700">글로벌 이벤트 영향</span>
+                </div>
+                <p className="text-sm text-gray-700 leading-relaxed bg-emerald-50/50 rounded-xl p-3">
+                  {report.technicalSignals.globalEventImpact}
+                </p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      <PredictionCard stockCode={stockCode} />
+
+      {/* Related news section */}
+      <Card className="rounded-xl border-0 bg-white shadow-none">
+        <CardContent className="p-4">
+          <h2 className="mb-3 text-[15px] font-bold text-gray-900">
+            관련 뉴스
+          </h2>
+          {news && news.length > 0 ? (
+            <div className="divide-y divide-gray-100">
+              {news.map((article) => (
+                <button
+                  key={article.id}
+                  type="button"
+                  className="group flex w-full items-start gap-2 py-3 text-left transition-colors hover:bg-gray-50 -mx-1 px-1 rounded-lg"
+                  onClick={() => {
+                    setSelectedNewsId(article.id);
+                    setSheetOpen(true);
+                  }}
+                >
+                  <span className={`mt-2 h-2 w-2 shrink-0 rounded-full ${
+                    article.sentiment === 'POSITIVE' ? 'bg-red-400' :
+                    article.sentiment === 'NEGATIVE' ? 'bg-blue-400' :
+                    'bg-gray-300'
+                  }`} />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-900 line-clamp-2 leading-snug">
+                      {article.title}
+                    </p>
+                    <div className="mt-1.5 flex items-center gap-2">
+                      <SentimentBadge sentiment={article.sentiment} />
+                      <span className="text-[11px] text-gray-500">
+                        {article.sourceName}
+                      </span>
+                      <span className="text-[11px] text-gray-400">
+                        {formatRelativeTime(article.publishedAt)}
+                      </span>
+                    </div>
+                  </div>
+                  <Sparkles className="mt-1 h-3.5 w-3.5 shrink-0 text-gray-300 transition-colors group-hover:text-[#3182F6]" />
+                </button>
+              ))}
+            </div>
+          ) : (
+            <p className="py-4 text-center text-sm text-gray-400">
+              관련 뉴스가 없습니다
+            </p>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+/* ────────────────────────────────────────────────────────
+ * DisclosureTab - DART (domestic) or SEC EDGAR (overseas)
+ * ──────────────────────────────────────────────────────── */
+
+function DisclosureTab({
+  stockCode,
+  isDomestic,
+}: {
+  stockCode: string;
+  isDomestic: boolean;
+}) {
+  if (isDomestic) {
+    return <DomesticDisclosureList stockCode={stockCode} />;
+  }
+  return <OverseasDisclosureList stockCode={stockCode} />;
+}
+
+/** Skeleton for disclosure list loading state */
+function DisclosureSkeleton() {
+  return (
+    <div className="space-y-3 p-4">
+      {Array.from({ length: 6 }).map((_, i) => (
+        <div key={i} className="rounded-xl bg-white p-4 space-y-2">
+          <div className="flex items-center gap-2">
+            <Skeleton className="h-5 w-14 rounded-full" />
+            <Skeleton className="h-4 w-20" />
+          </div>
+          <Skeleton className="h-4 w-full" />
+          <Skeleton className="h-4 w-2/3" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** Domestic disclosure list (DART) */
+function DomesticDisclosureList({ stockCode }: { stockCode: string }) {
+  const { data, isLoading, isError } = useDomesticDisclosure(stockCode);
+
+  if (isLoading) return <DisclosureSkeleton />;
+
+  if (isError) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-3 px-4 py-16">
+        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gray-100">
+          <AlertCircle className="h-6 w-6 text-gray-400" />
+        </div>
+        <p className="text-sm text-gray-500">공시 정보를 불러올 수 없습니다</p>
+        <p className="text-xs text-gray-400">잠시 후 다시 시도해 주세요</p>
+      </div>
+    );
+  }
+
+  if (!data || data.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-2 px-4 py-16">
+        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gray-100">
+          <FileText className="h-6 w-6 text-gray-300" />
+        </div>
+        <p className="text-sm text-gray-500">공시 내역이 없습니다</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-4 space-y-2">
+      <div className="flex items-center justify-between mb-1">
+        <p className="text-[13px] text-gray-500">
+          최근 공시 <span className="font-semibold text-gray-700">{data.length}</span>건
+        </p>
+        <span className="text-[11px] text-gray-400">DART</span>
+      </div>
+
+      <div className="space-y-2">
+        {data.map((item) => (
+          <a
+            key={item.id}
+            href={item.dartUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="group block rounded-xl bg-white p-4 transition-colors hover:bg-gray-50 active:bg-gray-100"
+          >
+            <div className="flex items-center gap-2 mb-1.5">
+              <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${getDisclosureTypeBadgeClass(item.disclosureType)}`}>
+                {item.disclosureType}
+              </span>
+              <span className="flex items-center gap-1 text-[11px] text-gray-400">
+                <Calendar className="h-3 w-3" />
+                {formatDate(item.filingDate)}
+              </span>
+            </div>
+            <p className="text-[13px] font-medium text-gray-900 leading-snug line-clamp-2 group-hover:text-[#3182F6] transition-colors">
+              {item.title}
+            </p>
+            <div className="mt-1.5 flex items-center justify-between">
+              <span className="text-[11px] text-gray-400">{item.submitter}</span>
+              <ExternalLink className="h-3.5 w-3.5 text-gray-300 group-hover:text-[#3182F6] transition-colors" />
+            </div>
+          </a>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** Overseas disclosure list (SEC EDGAR) */
+function OverseasDisclosureList({ stockCode }: { stockCode: string }) {
+  const { data, isLoading, isError } = useOverseasDisclosure(stockCode);
+
+  if (isLoading) return <DisclosureSkeleton />;
+
+  if (isError) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-3 px-4 py-16">
+        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gray-100">
+          <AlertCircle className="h-6 w-6 text-gray-400" />
+        </div>
+        <p className="text-sm text-gray-500">Filing 정보를 불러올 수 없습니다</p>
+        <p className="text-xs text-gray-400">잠시 후 다시 시도해 주세요</p>
+      </div>
+    );
+  }
+
+  if (!data || data.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-2 px-4 py-16">
+        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gray-100">
+          <FileText className="h-6 w-6 text-gray-300" />
+        </div>
+        <p className="text-sm text-gray-500">Filing 내역이 없습니다</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-4 space-y-2">
+      <div className="flex items-center justify-between mb-1">
+        <p className="text-[13px] text-gray-500">
+          최근 Filing <span className="font-semibold text-gray-700">{data.length}</span>건
+        </p>
+        <span className="text-[11px] text-gray-400">SEC EDGAR</span>
+      </div>
+
+      <div className="space-y-2">
+        {data.map((item) => (
+          <a
+            key={item.id}
+            href={item.edgarUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="group block rounded-xl bg-white p-4 transition-colors hover:bg-gray-50 active:bg-gray-100"
+          >
+            <div className="flex items-center gap-2 mb-1.5">
+              <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold ${getDisclosureTypeBadgeClass(item.filingType)}`}>
+                {item.filingType}
+              </span>
+              <span className="flex items-center gap-1 text-[11px] text-gray-400">
+                <Calendar className="h-3 w-3" />
+                {formatDate(item.filingDate)}
+              </span>
+            </div>
+            <p className="text-[13px] font-medium text-gray-900 leading-snug line-clamp-2 group-hover:text-[#3182F6] transition-colors">
+              {item.title}
+            </p>
+            <div className="mt-1.5 flex items-center justify-end">
+              <ExternalLink className="h-3.5 w-3.5 text-gray-300 group-hover:text-[#3182F6] transition-colors" />
+            </div>
+          </a>
+        ))}
+      </div>
     </div>
   );
 }

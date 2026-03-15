@@ -119,6 +119,48 @@ public class DartApiClient {
         }
     }
 
+    public JsonNode fetchDisclosureList(String corpCode, String beginDate, String endDate,
+                                        int pageNo, int pageCount) {
+        try {
+            String body = webClient.get()
+                    .uri(uriBuilder -> uriBuilder
+                            .path("/list.json")
+                            .queryParam("crtfc_key", properties.key())
+                            .queryParam("corp_code", corpCode)
+                            .queryParam("bgn_de", beginDate)
+                            .queryParam("end_de", endDate)
+                            .queryParam("page_no", pageNo)
+                            .queryParam("page_count", pageCount)
+                            .build())
+                    .retrieve()
+                    .bodyToMono(String.class)
+                    .retryWhen(reactor.util.retry.Retry.backoff(2, java.time.Duration.ofSeconds(1))
+                            .maxBackoff(java.time.Duration.ofSeconds(5)))
+                    .block(java.time.Duration.ofSeconds(30));
+
+            if (body == null || body.isBlank()) {
+                log.warn("DART disclosure list returned empty response for corpCode={}", corpCode);
+                return null;
+            }
+
+            JsonNode root = objectMapper.readTree(body);
+
+            String status = root.path("status").asText("");
+            if (!"000".equals(status)) {
+                String message = root.path("message").asText("Unknown error");
+                log.warn("DART disclosure list API error for corpCode={}: [{}] {}",
+                        corpCode, status, message);
+                return null;
+            }
+
+            return root;
+        } catch (Exception e) {
+            log.error("DART disclosure list API call failed for corpCode={}: {}",
+                    corpCode, e.getMessage());
+            return null;
+        }
+    }
+
     public JsonNode fetchSingleCompanyAccountAll(String corpCode, String bsnsYear,
                                                   String reprtCode, String fsDiv) {
         try {
