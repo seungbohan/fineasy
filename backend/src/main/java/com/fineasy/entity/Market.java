@@ -8,5 +8,7 @@ public enum Market {
 
     NASDAQ,
 
-    NYSE
+    NYSE,
+
+    AMEX
 }

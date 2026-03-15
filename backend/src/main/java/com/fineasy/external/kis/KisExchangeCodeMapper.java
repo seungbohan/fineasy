@@ -12,6 +12,7 @@ public final class KisExchangeCodeMapper {
         return switch (market) {
             case NASDAQ -> "NAS";
             case NYSE -> "NYS";
+            case AMEX -> "AMS";
             default -> throw new IllegalArgumentException(
                     "No KIS exchange code mapping for market: " + market);
         };
@@ -26,6 +27,6 @@ public final class KisExchangeCodeMapper {
     }
 
     public static boolean isOverseasMarket(Market market) {
-        return market == Market.NASDAQ || market == Market.NYSE;
+        return market == Market.NASDAQ || market == Market.NYSE || market == Market.AMEX;
     }
 }
