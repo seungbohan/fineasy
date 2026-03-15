@@ -4,7 +4,6 @@ import './globals.css';
 import { Providers } from '@/components/providers';
 import { Header } from '@/components/layout/header';
 import { BottomNav } from '@/components/layout/bottom-nav';
-import Script from 'next/script';
 import {
   WebsiteJsonLd,
   OrganizationJsonLd,
@@ -126,11 +125,10 @@ export default function RootLayout({
         <WebsiteJsonLd />
         <OrganizationJsonLd />
         <FinancialServiceJsonLd />
-        <Script
+        <script
           async
           src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-1140877243889064"
           crossOrigin="anonymous"
-          strategy="afterInteractive"
         />
       </head>
       <body

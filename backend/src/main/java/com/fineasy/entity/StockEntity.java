@@ -62,6 +62,8 @@ public class StockEntity {
         updatedAt = LocalDateTime.now();
     }
 
+    public void updateName(String stockName) { this.stockName = stockName; }
+
     public Long getId() { return id; }
     public String getStockCode() { return stockCode; }
     public String getStockName() { return stockName; }
