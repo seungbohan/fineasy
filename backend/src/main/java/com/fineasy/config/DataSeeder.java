@@ -9,7 +9,6 @@ import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -33,8 +32,6 @@ public class DataSeeder implements CommandLineRunner {
     private final NewsArticleRepository newsRepo;
     private final LearnArticleRepository articleRepo;
     private final String ecosApiKey;
-    private final String dataProviderType;
-
     @Autowired(required = false)
     private EcosDataSyncService ecosDataSyncService;
 
@@ -45,8 +42,7 @@ public class DataSeeder implements CommandLineRunner {
                       MacroIndicatorRepository macroRepo,
                       NewsArticleRepository newsRepo,
                       LearnArticleRepository articleRepo,
-                      @Value("${ecos.api.key:}") String ecosApiKey,
-                      @Value("${data-provider.type:mock}") String dataProviderType) {
+                      @Value("${ecos.api.key:}") String ecosApiKey) {
         this.stockRepo = stockRepo;
         this.priceRepo = priceRepo;
         this.categoryRepo = categoryRepo;
@@ -55,7 +51,6 @@ public class DataSeeder implements CommandLineRunner {
         this.newsRepo = newsRepo;
         this.articleRepo = articleRepo;
         this.ecosApiKey = ecosApiKey;
-        this.dataProviderType = dataProviderType;
     }
 
     @Override
@@ -63,11 +58,7 @@ public class DataSeeder implements CommandLineRunner {
     public void run(String... args) {
         log.info("Starting data seeding...");
         seedStocks();
-        if ("kis".equals(dataProviderType)) {
-            log.info("KIS mode active - skipping mock stock price seeding (KisDailyPriceSyncService will backfill)");
-        } else {
-            seedStockPrices();
-        }
+        log.info("KIS mode active - skipping mock stock price seeding (KisDailyPriceSyncService will backfill)");
         seedTermCategories();
         seedFinancialTerms();
         cleanAndSeedMacroIndicators();
@@ -149,106 +140,6 @@ public class DataSeeder implements CommandLineRunner {
 
         log.info("Seeded {} featured KR + {} US stocks (remaining KR stocks synced from KIS master)",
                 featuredKr.size(), usStocks.size());
-    }
-
-    private void seedStockPrices() {
-        if (priceRepo.count() > 0) return;
-
-        List<StockEntity> stocks = stockRepo.findAll();
-        Random random = new Random(42);
-        List<StockPriceEntity> allPrices = new ArrayList<>();
-
-        for (StockEntity stock : stocks) {
-            double basePrice = getBasePrice(stock.getStockCode());
-            LocalDate date = LocalDate.now().minusDays(60);
-
-            for (int i = 0; i < 60; i++) {
-                double change = (random.nextDouble() - 0.48) * basePrice * 0.03;
-                basePrice = Math.max(basePrice + change, basePrice * 0.9);
-
-                double open = basePrice * (1 + (random.nextDouble() - 0.5) * 0.02);
-                double high = Math.max(open, basePrice) * (1 + random.nextDouble() * 0.015);
-                double low = Math.min(open, basePrice) * (1 - random.nextDouble() * 0.015);
-                long volume = (long) (10000000 + random.nextDouble() * 20000000);
-
-                allPrices.add(new StockPriceEntity(
-                        null, stock, date,
-                        BigDecimal.valueOf(Math.round(open)),
-                        BigDecimal.valueOf(Math.round(high)),
-                        BigDecimal.valueOf(Math.round(low)),
-                        BigDecimal.valueOf(Math.round(basePrice)),
-                        volume, LocalDateTime.now()
-                ));
-                date = date.plusDays(1);
-            }
-        }
-        priceRepo.saveAll(allPrices);
-        log.info("Seeded {} stock price records", allPrices.size());
-    }
-
-    private double getBasePrice(String code) {
-        return switch (code) {
-
-            case "005930" -> 72000;
-            case "000660" -> 180000;
-            case "373220" -> 380000;
-            case "207940" -> 750000;
-            case "005380" -> 230000;
-            case "000270" -> 120000;
-            case "068270" -> 190000;
-            case "035420" -> 210000;
-            case "035720" -> 45000;
-            case "006400" -> 350000;
-            case "051910" -> 310000;
-            case "105560" -> 78000;
-            case "055550" -> 52000;
-            case "012450" -> 320000;
-            case "005490" -> 280000;
-            case "028260" -> 130000;
-            case "017670" -> 55000;
-            case "066570" -> 98000;
-            case "259960" -> 250000;
-            case "012330" -> 210000;
-
-            case "247540" -> 260000;
-            case "196170" -> 95000;
-            case "028300" -> 78000;
-            case "352820" -> 270000;
-            case "035900" -> 62000;
-
-            case "AAPL" -> 182;
-            case "MSFT" -> 415;
-            case "NVDA" -> 800;
-            case "GOOGL" -> 155;
-            case "AMZN" -> 180;
-            case "TSLA" -> 200;
-            case "META" -> 500;
-            case "AVGO" -> 170;
-            case "NFLX" -> 620;
-            case "AMD" -> 160;
-            case "ADBE" -> 520;
-            case "QCOM" -> 170;
-            case "INTC" -> 28;
-            case "COST" -> 740;
-            case "MU" -> 95;
-            case "COIN" -> 220;
-            case "PLTR" -> 25;
-            case "ARM" -> 130;
-            case "SMCI" -> 800;
-
-            case "JPM" -> 195;
-            case "V" -> 275;
-            case "UNH" -> 530;
-            case "LLY" -> 780;
-            case "XOM" -> 110;
-            case "WMT" -> 165;
-            case "BA" -> 210;
-            case "DIS" -> 100;
-            case "TSM" -> 140;
-            case "CRM" -> 280;
-            case "UBER" -> 75;
-            default -> 50000;
-        };
     }
 
     private void seedTermCategories() {
