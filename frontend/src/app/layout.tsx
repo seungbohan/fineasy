@@ -21,7 +21,7 @@ import {
 const notoSansKR = Noto_Sans_KR({
   variable: '--font-noto-sans-kr',
   subsets: ['latin'],
-  weight: ['400', '500', '700'],
+  weight: ['300', '400', '500', '600', '700'],
 });
 
 const geistMono = Geist_Mono({
