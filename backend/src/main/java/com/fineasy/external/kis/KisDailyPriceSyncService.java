@@ -61,6 +61,7 @@ public class KisDailyPriceSyncService {
         this.stockPriceRepository = stockPriceRepository;
     }
 
+    @Async
     @EventListener(ApplicationReadyEvent.class)
     public void syncOnStartup() {
         try {

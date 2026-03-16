@@ -9,7 +9,9 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import jakarta.annotation.PostConstruct;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
+import org.springframework.scheduling.annotation.Async;
 import java.time.Instant;
 import java.util.List;
 
@@ -28,7 +30,8 @@ public class CoinGeckoCollectionScheduler {
         this.cryptoRepository = cryptoRepository;
     }
 
-    @PostConstruct
+    @Async
+    @EventListener(ApplicationReadyEvent.class)
     public void initialCollection() {
         log.info("Starting initial CoinGecko data collection...");
         collectCryptoPrices();

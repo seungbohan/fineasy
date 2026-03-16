@@ -12,6 +12,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
+import org.springframework.scheduling.annotation.Async;
 import java.time.LocalDate;
 import java.time.YearMonth;
 import java.util.LinkedHashMap;
@@ -50,6 +51,7 @@ public class KisFuturesSyncService {
         this.macroRepo = macroRepo;
     }
 
+    @Async
     @EventListener(ApplicationReadyEvent.class)
     @Transactional
     public void initialSync() {

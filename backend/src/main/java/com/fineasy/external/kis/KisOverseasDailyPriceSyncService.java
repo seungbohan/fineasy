@@ -10,6 +10,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
+import org.springframework.scheduling.annotation.Async;
 import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
@@ -59,6 +60,7 @@ public class KisOverseasDailyPriceSyncService {
         this.stockPriceRepository = stockPriceRepository;
     }
 
+    @Async
     @EventListener(ApplicationReadyEvent.class)
     public void syncOnStartup() {
         try {
