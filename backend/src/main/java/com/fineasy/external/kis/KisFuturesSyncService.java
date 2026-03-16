@@ -21,7 +21,7 @@ import java.util.Map;
 import static com.fineasy.external.kis.KisResponseParser.*;
 
 @Service
-@ConditionalOnProperty(name = "data-provider.type", havingValue = "kis")
+@ConditionalOnProperty(name = "kis.futures.enabled", havingValue = "true", matchIfMissing = false)
 public class KisFuturesSyncService {
 
     private static final Logger log = LoggerFactory.getLogger(KisFuturesSyncService.class);
