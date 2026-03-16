@@ -81,7 +81,7 @@ export function useStockNews(stockCode: string) {
       const res = await apiClient.get<NewsArticleApiResponse[]>(
         `/stocks/${stockCode}/news`
       );
-      return res.map(toNewsArticle);
+      return Array.isArray(res) ? res.map(toNewsArticle) : [];
     },
     enabled: !!stockCode,
     staleTime: 60 * 1000,

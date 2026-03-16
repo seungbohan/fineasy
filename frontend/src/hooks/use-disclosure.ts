@@ -11,10 +11,12 @@ import { apiClient } from '@/lib/api-client';
 export function useDomesticDisclosure(stockCode: string) {
   return useQuery<DomesticDisclosure[]>({
     queryKey: ['disclosure', 'domestic', stockCode],
-    queryFn: () =>
-      apiClient.get<DomesticDisclosure[]>(
+    queryFn: async () => {
+      const res = await apiClient.get<DomesticDisclosure[]>(
         `/disclosure/domestic/${stockCode}`
-      ),
+      );
+      return Array.isArray(res) ? res : [];
+    },
     enabled: !!stockCode,
     staleTime: 5 * 60 * 1000,
   });
@@ -27,10 +29,12 @@ export function useDomesticDisclosure(stockCode: string) {
 export function useOverseasDisclosure(stockCode: string) {
   return useQuery<OverseasDisclosure[]>({
     queryKey: ['disclosure', 'overseas', stockCode],
-    queryFn: () =>
-      apiClient.get<OverseasDisclosure[]>(
+    queryFn: async () => {
+      const res = await apiClient.get<OverseasDisclosure[]>(
         `/disclosure/overseas/${stockCode}`
-      ),
+      );
+      return Array.isArray(res) ? res : [];
+    },
     enabled: !!stockCode,
     staleTime: 5 * 60 * 1000,
   });
