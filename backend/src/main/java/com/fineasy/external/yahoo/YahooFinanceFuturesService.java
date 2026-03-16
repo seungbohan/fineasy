@@ -12,7 +12,6 @@ import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -20,6 +19,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.time.LocalDate;
+import java.util.Optional;
 
 @Service
 public class YahooFinanceFuturesService {
@@ -68,7 +68,6 @@ public class YahooFinanceFuturesService {
         log.info("Periodic Yahoo Finance futures sync completed.");
     }
 
-    @Transactional
     public void syncAllFutures() {
         for (FuturesDef def : FUTURES_DEFS) {
             try {
@@ -112,13 +111,11 @@ public class YahooFinanceFuturesService {
 
             LocalDate today = LocalDate.now();
 
-            long deleted = macroRepo.deleteByIndicatorCode(def.indicatorCode());
-            if (deleted > 0) {
-                log.debug("Replaced {} old records for {}", deleted, def.indicatorCode());
-            }
+            Optional<MacroIndicatorEntity> existing = macroRepo.findLatestByCode(def.indicatorCode());
+            Long existingId = existing.map(MacroIndicatorEntity::getId).orElse(null);
 
             macroRepo.save(new MacroIndicatorEntity(
-                    null, def.indicatorCode(), def.displayName(),
+                    existingId, def.indicatorCode(), def.displayName(),
                     price, def.unit(), today, "Yahoo Finance"));
             log.info("Saved Yahoo futures {} = {}", def.indicatorCode(), price);
 
