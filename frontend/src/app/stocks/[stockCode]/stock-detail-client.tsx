@@ -333,7 +333,7 @@ export default function StockDetailPage({
                 </p>
               </section>
 
-              {analysisData.analysis.relatedStocks.length > 0 && (
+              {analysisData.analysis.relatedStocks?.length > 0 && (
                 <section>
                   <div className="flex items-center gap-1.5 mb-2">
                     <Tag className="h-3.5 w-3.5 text-[#3182F6]" />
@@ -701,7 +701,7 @@ function SentimentTrendSection({ stockCode }: { stockCode: string }) {
     );
   }
 
-  if (!data || data.points.length < 2) return null;
+  if (!data || !data.points || data.points.length < 2) return null;
 
   return (
     <Card className="rounded-xl border-0 bg-white shadow-none">

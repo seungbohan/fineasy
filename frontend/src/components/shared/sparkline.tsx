@@ -11,7 +11,7 @@ export function Sparkline({
   width?: number;
   height?: number;
 }) {
-  if (data.length < 2) return null;
+  if (!data || data.length < 2) return null;
 
   const min = Math.min(...data);
   const max = Math.max(...data);
