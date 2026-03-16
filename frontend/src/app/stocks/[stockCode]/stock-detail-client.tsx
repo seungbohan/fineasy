@@ -1,6 +1,6 @@
 'use client';
 
-import { use, useState } from 'react';
+import { use, useState, useMemo } from 'react';
 import Link from 'next/link';
 import {
   ArrowLeft,
@@ -17,6 +17,8 @@ import {
   Calendar,
   Clock,
   Megaphone,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -748,6 +750,12 @@ function TimelineTab({
   stockCode: string;
   isDomestic: boolean;
 }) {
+  const [currentMonth, setCurrentMonth] = useState(() => {
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth(), 1);
+  });
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
+
   const { data: news, isLoading: isNewsLoading } = useStockNews(stockCode);
   const { data: domesticDisclosures, isLoading: isDomLoading } =
     useDomesticDisclosure(isDomestic ? stockCode : '');
@@ -756,160 +764,217 @@ function TimelineTab({
 
   const isLoading = isNewsLoading || (isDomestic ? isDomLoading : isOverseasLoading);
 
+  const items: TimelineItem[] = useMemo(() => {
+    const result: TimelineItem[] = [];
+    (news ?? []).forEach((article) => {
+      result.push({
+        id: `news-${article.id}`,
+        type: 'news',
+        title: article.title,
+        date: article.publishedAt,
+        meta: article.sourceName,
+        url: article.originalUrl,
+        sentiment: article.sentiment,
+      });
+    });
+    if (isDomestic && domesticDisclosures) {
+      domesticDisclosures.forEach((d) => {
+        result.push({
+          id: `disc-${d.id}`,
+          type: 'disclosure',
+          title: d.title,
+          date: d.filingDate,
+          meta: d.submitter,
+          url: d.dartUrl,
+          disclosureType: d.disclosureType,
+        });
+      });
+    }
+    if (!isDomestic && overseasDisclosures) {
+      overseasDisclosures.forEach((d) => {
+        result.push({
+          id: `disc-${d.id}`,
+          type: 'disclosure',
+          title: d.title,
+          date: d.filingDate,
+          url: d.edgarUrl,
+          disclosureType: d.filingType,
+        });
+      });
+    }
+    result.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    return result;
+  }, [news, domesticDisclosures, overseasDisclosures, isDomestic]);
+
+  // Group items by date (YYYY-MM-DD)
+  const itemsByDate = useMemo(() => {
+    const map = new Map<string, TimelineItem[]>();
+    items.forEach((item) => {
+      const key = item.date.slice(0, 10);
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(item);
+    });
+    return map;
+  }, [items]);
+
+  // Calendar helpers
+  const year = currentMonth.getFullYear();
+  const month = currentMonth.getMonth();
+  const firstDay = new Date(year, month, 1).getDay(); // 0=Sun
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const today = new Date().toISOString().slice(0, 10);
+
+  const prevMonth = () => setCurrentMonth(new Date(year, month - 1, 1));
+  const nextMonth = () => setCurrentMonth(new Date(year, month + 1, 1));
+
+  const selectedItems = selectedDate ? (itemsByDate.get(selectedDate) ?? []) : [];
+
   if (isLoading) {
     return (
-      <div className="p-4 space-y-4">
-        {Array.from({ length: 6 }).map((_, i) => (
-          <div key={i} className="flex gap-3">
-            <div className="flex flex-col items-center">
-              <Skeleton className="h-8 w-8 rounded-full" />
-              <Skeleton className="h-12 w-0.5" />
-            </div>
-            <div className="flex-1 space-y-2 pb-4">
-              <Skeleton className="h-4 w-full" />
-              <Skeleton className="h-3 w-24" />
-            </div>
-          </div>
-        ))}
-      </div>
-    );
-  }
-
-  /* Build unified timeline items */
-  const items: TimelineItem[] = [];
-
-  (news ?? []).forEach((article) => {
-    items.push({
-      id: `news-${article.id}`,
-      type: 'news',
-      title: article.title,
-      date: article.publishedAt,
-      meta: article.sourceName,
-      url: article.originalUrl,
-      sentiment: article.sentiment,
-    });
-  });
-
-  if (isDomestic && domesticDisclosures) {
-    domesticDisclosures.forEach((d) => {
-      items.push({
-        id: `disc-${d.id}`,
-        type: 'disclosure',
-        title: d.title,
-        date: d.filingDate,
-        meta: d.submitter,
-        url: d.dartUrl,
-        disclosureType: d.disclosureType,
-      });
-    });
-  }
-
-  if (!isDomestic && overseasDisclosures) {
-    overseasDisclosures.forEach((d) => {
-      items.push({
-        id: `disc-${d.id}`,
-        type: 'disclosure',
-        title: d.title,
-        date: d.filingDate,
-        url: d.edgarUrl,
-        disclosureType: d.filingType,
-      });
-    });
-  }
-
-  /* Sort by date descending */
-  items.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-
-  if (items.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center gap-2 px-4 py-16">
-        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gray-100">
-          <Clock className="h-6 w-6 text-gray-300" />
-        </div>
-        <p className="text-sm text-gray-500">타임라인 데이터가 없습니다</p>
+      <div className="p-4 space-y-3">
+        <Skeleton className="h-8 w-40 mx-auto" />
+        <Skeleton className="h-[260px] w-full rounded-xl" />
       </div>
     );
   }
 
   return (
-    <div className="p-4">
-      <div className="space-y-0">
-        {items.map((item, idx) => {
-          const isLast = idx === items.length - 1;
-          const isNews = item.type === 'news';
+    <div className="p-4 space-y-3">
+      {/* Calendar header */}
+      <div className="flex items-center justify-between px-1">
+        <button onClick={prevMonth} className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors">
+          <ChevronLeft className="h-4 w-4 text-gray-500" />
+        </button>
+        <span className="text-[15px] font-bold text-gray-900">
+          {year}년 {month + 1}월
+        </span>
+        <button onClick={nextMonth} className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors">
+          <ChevronRight className="h-4 w-4 text-gray-500" />
+        </button>
+      </div>
 
-          return (
-            <div key={item.id} className="flex gap-3">
-              {/* Timeline line + icon */}
-              <div className="flex flex-col items-center">
-                <div
-                  className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${
-                    isNews
-                      ? 'bg-blue-50'
-                      : 'bg-orange-50'
-                  }`}
-                >
-                  {isNews ? (
-                    <Newspaper className="h-3.5 w-3.5 text-[#3182F6]" />
-                  ) : (
-                    <Megaphone className="h-3.5 w-3.5 text-orange-500" />
-                  )}
-                </div>
-                {!isLast && (
-                  <div className="w-0.5 flex-1 bg-gray-100" />
+      {/* Calendar grid */}
+      <div className="rounded-xl bg-white overflow-hidden">
+        {/* Day headers */}
+        <div className="grid grid-cols-7 text-center">
+          {['일', '월', '화', '수', '목', '금', '토'].map((d, i) => (
+            <div key={d} className={`py-2 text-[11px] font-semibold ${i === 0 ? 'text-red-400' : i === 6 ? 'text-blue-400' : 'text-gray-400'}`}>
+              {d}
+            </div>
+          ))}
+        </div>
+        {/* Day cells */}
+        <div className="grid grid-cols-7">
+          {Array.from({ length: firstDay }).map((_, i) => (
+            <div key={`empty-${i}`} className="h-11" />
+          ))}
+          {Array.from({ length: daysInMonth }).map((_, i) => {
+            const day = i + 1;
+            const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+            const dayItems = itemsByDate.get(dateStr);
+            const hasNews = dayItems?.some((it) => it.type === 'news');
+            const hasDisc = dayItems?.some((it) => it.type === 'disclosure');
+            const isSelected = selectedDate === dateStr;
+            const isToday = dateStr === today;
+            const dayOfWeek = new Date(year, month, day).getDay();
+
+            return (
+              <button
+                key={day}
+                onClick={() => setSelectedDate(isSelected ? null : dateStr)}
+                className={`relative h-11 flex flex-col items-center justify-center transition-colors ${
+                  isSelected
+                    ? 'bg-gray-900 text-white rounded-lg'
+                    : isToday
+                      ? 'bg-blue-50 rounded-lg'
+                      : 'hover:bg-gray-50'
+                } ${!isSelected && dayOfWeek === 0 ? 'text-red-400' : ''} ${!isSelected && dayOfWeek === 6 ? 'text-blue-400' : ''}`}
+              >
+                <span className={`text-[13px] tabular-nums ${isSelected ? 'font-bold' : dayItems ? 'font-semibold' : 'font-normal text-gray-500'}`}>
+                  {day}
+                </span>
+                {dayItems && (
+                  <div className="flex gap-0.5 mt-0.5">
+                    {hasNews && <span className={`h-1 w-1 rounded-full ${isSelected ? 'bg-blue-300' : 'bg-[#3182F6]'}`} />}
+                    {hasDisc && <span className={`h-1 w-1 rounded-full ${isSelected ? 'bg-orange-300' : 'bg-orange-400'}`} />}
+                  </div>
                 )}
-              </div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
 
-              {/* Content */}
-              <div className={`flex-1 min-w-0 pb-4 ${isLast ? '' : 'border-b-0'}`}>
-                <div className="flex items-center gap-2 mb-1">
-                  <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${
-                    isNews
-                      ? 'bg-blue-50 text-[#3182F6]'
-                      : 'bg-orange-50 text-orange-600'
-                  }`}>
-                    {isNews ? '뉴스' : '공시'}
-                  </span>
-                  {item.disclosureType && (
-                    <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${getDisclosureTypeBadgeClass(item.disclosureType)}`}>
-                      {item.disclosureType}
-                    </span>
-                  )}
-                  {item.sentiment && (
-                    <SentimentBadge sentiment={item.sentiment} />
-                  )}
-                </div>
+      {/* Legend */}
+      <div className="flex items-center justify-center gap-4 py-1">
+        <div className="flex items-center gap-1.5">
+          <span className="h-2 w-2 rounded-full bg-[#3182F6]" />
+          <span className="text-[11px] text-gray-400">뉴스</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span className="h-2 w-2 rounded-full bg-orange-400" />
+          <span className="text-[11px] text-gray-400">공시</span>
+        </div>
+      </div>
 
-                {item.url ? (
+      {/* Selected date items */}
+      {selectedDate && (
+        <div className="space-y-2">
+          <p className="text-[13px] font-semibold text-gray-700 px-1">
+            {new Date(selectedDate).toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short' })}
+            <span className="ml-1.5 text-gray-400 font-normal">{selectedItems.length}건</span>
+          </p>
+          {selectedItems.length === 0 ? (
+            <p className="text-sm text-gray-400 text-center py-6">이 날짜에 이벤트가 없습니다</p>
+          ) : (
+            <div className="space-y-2">
+              {selectedItems.map((item) => {
+                const isNews = item.type === 'news';
+                return (
                   <a
+                    key={item.id}
                     href={item.url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-[13px] font-medium text-gray-900 leading-snug line-clamp-2 hover:text-[#3182F6] transition-colors"
+                    className="group block rounded-xl bg-white p-3 transition-colors hover:bg-gray-50"
                   >
-                    {item.title}
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${
+                        isNews ? 'bg-blue-50 text-[#3182F6]' : 'bg-orange-50 text-orange-600'
+                      }`}>
+                        {isNews ? '뉴스' : '공시'}
+                      </span>
+                      {item.disclosureType && (
+                        <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${getDisclosureTypeBadgeClass(item.disclosureType)}`}>
+                          {item.disclosureType}
+                        </span>
+                      )}
+                      {item.sentiment && <SentimentBadge sentiment={item.sentiment} />}
+                    </div>
+                    <p className="text-[13px] font-medium text-gray-900 leading-snug line-clamp-2 group-hover:text-[#3182F6] transition-colors">
+                      {item.title}
+                    </p>
+                    <div className="mt-1 flex items-center gap-2">
+                      <span className="text-[11px] text-gray-400">{formatRelativeTime(item.date)}</span>
+                      {item.meta && <span className="text-[11px] text-gray-400">{item.meta}</span>}
+                    </div>
                   </a>
-                ) : (
-                  <p className="text-[13px] font-medium text-gray-900 leading-snug line-clamp-2">
-                    {item.title}
-                  </p>
-                )}
-
-                <div className="mt-1 flex items-center gap-2">
-                  <span className="text-[11px] text-gray-400">
-                    {formatRelativeTime(item.date)}
-                  </span>
-                  {item.meta && (
-                    <span className="text-[11px] text-gray-400">
-                      {item.meta}
-                    </span>
-                  )}
-                </div>
-              </div>
+                );
+              })}
             </div>
-          );
-        })}
-      </div>
+          )}
+        </div>
+      )}
+
+      {/* No data at all */}
+      {items.length === 0 && (
+        <div className="flex flex-col items-center justify-center gap-2 py-8">
+          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gray-100">
+            <Calendar className="h-6 w-6 text-gray-300" />
+          </div>
+          <p className="text-sm text-gray-500">이벤트 데이터가 없습니다</p>
+        </div>
+      )}
     </div>
   );
 }

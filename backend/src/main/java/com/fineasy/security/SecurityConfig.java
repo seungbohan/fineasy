@@ -56,6 +56,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/v1/macro/**").permitAll()
                         .requestMatchers("/api/v1/crypto/**").permitAll()
                         .requestMatchers("/api/v1/global-events/**").permitAll()
+                        .requestMatchers("/api/v1/disclosure/**").permitAll()
                         .requestMatchers("/api/v1/learn/articles").permitAll()
                         .requestMatchers("/api/v1/learn/articles/{articleId}").permitAll()
 
