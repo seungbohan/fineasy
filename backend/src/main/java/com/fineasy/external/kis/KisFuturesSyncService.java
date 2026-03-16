@@ -98,9 +98,9 @@ public class KisFuturesSyncService {
             return;
         }
 
-        double rawPrice = getDouble(output, "last");
+        double rawPrice = getDouble(output, "last_price");
+        if (rawPrice == 0.0) rawPrice = getDouble(output, "last");
         if (rawPrice == 0.0) rawPrice = getDouble(output, "stck_prpr");
-        if (rawPrice == 0.0) rawPrice = getDouble(output, "ovrs_nmix_prpr");
 
         if (rawPrice == 0.0) {
             log.warn("Zero price for futures {}: {}", def.indicatorCode(), symbolCode);
