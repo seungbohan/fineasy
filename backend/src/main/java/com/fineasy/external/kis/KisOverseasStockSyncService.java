@@ -58,7 +58,6 @@ public class KisOverseasStockSyncService {
 
     @Async
     @EventListener(ApplicationReadyEvent.class)
-    @Transactional
     public void syncOnStartup() {
         log.info("Starting overseas stock master sync...");
         try {

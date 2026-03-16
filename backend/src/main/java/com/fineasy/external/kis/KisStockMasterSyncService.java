@@ -51,7 +51,6 @@ public class KisStockMasterSyncService {
 
     @Async
     @EventListener(ApplicationReadyEvent.class)
-    @Transactional
     public void syncOnStartup() {
         log.info("Starting KIS stock master sync...");
         try {
