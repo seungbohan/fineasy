@@ -8,6 +8,8 @@ import com.fineasy.dto.response.PredictionResponse;
 import com.fineasy.dto.response.StockFinancialsResponse;
 import com.fineasy.entity.*;
 import com.fineasy.service.AiAnalysisProvider;
+import com.fineasy.service.EmbeddingService;
+import com.fineasy.service.FinanceOntology;
 import com.fineasy.service.GlobalEventService;
 import com.fineasy.service.MacroService;
 import com.fineasy.service.NewsService;
@@ -50,6 +52,8 @@ public class OpenAiAnalysisProvider implements AiAnalysisProvider {
     private final MacroService macroService;
     private final StockDataProvider stockDataProvider;
     private final GlobalEventService globalEventService;
+    private final EmbeddingService embeddingService;
+    private final FinanceOntology financeOntology;
 
     public OpenAiAnalysisProvider(OpenAiClient openAiClient,
                                    OpenAiPromptBuilder promptBuilder,
@@ -58,7 +62,9 @@ public class OpenAiAnalysisProvider implements AiAnalysisProvider {
                                    NewsService newsService,
                                    MacroService macroService,
                                    StockDataProvider stockDataProvider,
-                                   GlobalEventService globalEventService) {
+                                   GlobalEventService globalEventService,
+                                   EmbeddingService embeddingService,
+                                   FinanceOntology financeOntology) {
         this.openAiClient = openAiClient;
         this.promptBuilder = promptBuilder;
         this.objectMapper = objectMapper;
@@ -67,23 +73,36 @@ public class OpenAiAnalysisProvider implements AiAnalysisProvider {
         this.macroService = macroService;
         this.stockDataProvider = stockDataProvider;
         this.globalEventService = globalEventService;
+        this.embeddingService = embeddingService;
+        this.financeOntology = financeOntology;
     }
 
     @Override
     @CircuitBreaker(name = "openai", fallbackMethod = "generateReportFallback")
     @Retry(name = "openai")
     public AnalysisReportResponse generateReport(String stockCode) {
-        log.info("Generating news-based AI analysis report for stock: {}", stockCode);
+        log.info("Generating RAG+Ontology enhanced AI analysis report for stock: {}", stockCode);
 
         StockEntity stock = stockService.getStockEntityByCode(stockCode);
         StockFinancialsResponse financials = fetchFinancialsSafely(stockCode);
         List<MacroIndicatorEntity> macroIndicators = macroService.getLatestIndicatorEntities();
-        List<String> recentNewsTitles = newsService.getRecentNewsTitles(stockCode, 10);
         List<String> globalEventSummaries = fetchGlobalEventSummaries();
+
+        // RAG: semantic search for relevant news instead of simple keyword/tag matching
+        List<String> recentNewsTitles = fetchSemanticNews(stock.getStockName(), stockCode, 15);
+
+        // Ontology: inject sector domain knowledge
+        String ontologyContext = financeOntology.buildOntologyContext(stockCode, stock.getSector());
 
         String userPrompt = promptBuilder.buildReportPrompt(
                 stock.getStockName(), stockCode, macroIndicators,
                 recentNewsTitles, globalEventSummaries, financials);
+
+        // Append ontology context to user prompt
+        if (!ontologyContext.isEmpty()) {
+            userPrompt = userPrompt + "\n" + ontologyContext;
+        }
+
         String systemPrompt = promptBuilder.getReportSystemPrompt();
 
         String aiResponse = openAiClient.chatReasoning(systemPrompt, userPrompt, MAX_REASONING_TOKENS_REPORT);
@@ -94,16 +113,26 @@ public class OpenAiAnalysisProvider implements AiAnalysisProvider {
     @CircuitBreaker(name = "openai", fallbackMethod = "generatePredictionFallback")
     @Retry(name = "openai")
     public PredictionResponse generatePrediction(String stockCode, String period) {
-        log.info("Generating AI prediction for stock: {}, period: {}", stockCode, period);
+        log.info("Generating RAG+Ontology enhanced AI prediction for stock: {}, period: {}", stockCode, period);
 
         StockEntity stock = stockService.getStockEntityByCode(stockCode);
         Double sentimentAvg = newsService.getAverageSentimentScore(stockCode, 20);
         List<MacroIndicatorEntity> macroIndicators = macroService.getLatestIndicatorEntities();
         StockFinancialsResponse financials = fetchFinancialsSafely(stockCode);
-        List<String> recentNewsTitles = newsService.getRecentNewsTitles(stockCode, 10);
+
+        // RAG: semantic search for relevant news
+        List<String> recentNewsTitles = fetchSemanticNews(stock.getStockName(), stockCode, 15);
+
+        // Ontology context
+        String ontologyContext = financeOntology.buildOntologyContext(stockCode, stock.getSector());
 
         String userPrompt = promptBuilder.buildPredictionPrompt(
                 stock.getStockName(), stockCode, period, sentimentAvg, macroIndicators, financials, recentNewsTitles);
+
+        if (!ontologyContext.isEmpty()) {
+            userPrompt = userPrompt + "\n" + ontologyContext;
+        }
+
         String systemPrompt = promptBuilder.getPredictionSystemPrompt();
 
         String aiResponse = openAiClient.chatReasoning(systemPrompt, userPrompt, MAX_REASONING_TOKENS_PREDICTION);
@@ -128,6 +157,30 @@ public class OpenAiAnalysisProvider implements AiAnalysisProvider {
             log.warn("Failed to fetch global events for report: {}", e.getMessage());
             return List.of();
         }
+    }
+
+    /**
+     * RAG-based news retrieval: uses semantic search to find the most relevant news
+     * for a given stock, falling back to keyword-based search if embeddings unavailable.
+     */
+    private List<String> fetchSemanticNews(String stockName, String stockCode, int limit) {
+        try {
+            String query = stockName + " " + stockCode;
+            var semanticResults = embeddingService.searchSimilarNews(
+                    query, limit, LocalDateTime.now().minusDays(7));
+
+            if (semanticResults != null && semanticResults.size() >= 5) {
+                log.debug("RAG: found {} semantically relevant articles for {}", semanticResults.size(), stockCode);
+                return semanticResults.stream()
+                        .map(com.fineasy.entity.NewsArticleEntity::getTitle)
+                        .toList();
+            }
+        } catch (Exception e) {
+            log.debug("RAG semantic search failed for {}, falling back to keyword: {}", stockCode, e.getMessage());
+        }
+
+        // Fallback to existing keyword-based search
+        return newsService.getRecentNewsTitles(stockCode, limit);
     }
 
     private StockFinancialsResponse fetchFinancialsSafely(String stockCode) {
