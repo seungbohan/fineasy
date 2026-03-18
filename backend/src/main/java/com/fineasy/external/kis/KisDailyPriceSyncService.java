@@ -310,6 +310,14 @@ public class KisDailyPriceSyncService {
         BigDecimal lowPrice = getBigDecimal(output, "stck_lwpr");
         long volume = getLong(output, "acml_vol");
 
+        // Update market cap on the stock entity (hts_avls is in 억원 units)
+        BigDecimal marketCapUnit = getBigDecimal(output, "hts_avls");
+        if (marketCapUnit.compareTo(BigDecimal.ZERO) > 0) {
+            BigDecimal marketCap = marketCapUnit.multiply(new BigDecimal("100000000"));
+            stock.updateMarketCapUsd(marketCap);
+            stockRepository.save(stock);
+        }
+
         return new StockPriceEntity(
                 null, stock, tradeDate,
                 openPrice, highPrice, lowPrice, closePrice,

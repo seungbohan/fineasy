@@ -26,7 +26,7 @@ public class FinnhubNewsCollectionScheduler {
      * Collect overseas stock news from Finnhub every 30 minutes.
      */
     @Scheduled(fixedRate = 1800000)
-    @SchedulerLock(name = "collectFinnhubNews", lockAtLeastFor = "PT5M", lockAtMostFor = "PT25M")
+    @SchedulerLock(name = "collectFinnhubNews", lockAtLeastFor = "PT5M", lockAtMostFor = "PT20M")
     public void collectFinnhubNews() {
         log.info("Starting scheduled Finnhub news collection...");
 

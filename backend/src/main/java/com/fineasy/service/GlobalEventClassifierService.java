@@ -21,7 +21,9 @@ public class GlobalEventClassifierService {
 
     private static final Logger log = LoggerFactory.getLogger(GlobalEventClassifierService.class);
 
-    private static final int MAX_TOKENS = 200;
+    private static final int MAX_TOKENS_SINGLE = 200;
+    private static final int BATCH_SIZE = 30;
+    private static final int MAX_TOKENS_BATCH = 4000;
 
     private static final Map<EventType, List<String>> KEYWORD_MAP = Map.of(
             EventType.GEOPOLITICAL, List.of(
@@ -103,6 +105,21 @@ public class GlobalEventClassifierService {
             "- CRITICAL: Immediate and widespread market impact\n\n" +
             "Response format: {\"eventType\": \"...\", \"riskLevel\": \"...\", \"summary\": \"...(2-3 sentence summary in Korean)\"}";
 
+    private static final String BATCH_SYSTEM_PROMPT =
+            "You are a financial news classifier. Classify each news headline into one of the following event types and risk levels. " +
+            "Respond ONLY with a JSON object.\n\n" +
+            "Event types:\n" +
+            "- GEOPOLITICAL: Geopolitical risks (war, sanctions, trade conflicts, territorial disputes)\n" +
+            "- FISCAL: Fiscal/political issues (debt ceiling, government shutdown, elections, regulations, tax policy)\n" +
+            "- INDUSTRY: Industry/corporate news (M&A, IPO, earnings, dividends, sector trends)\n" +
+            "- BLACK_SWAN: Black swan/sudden events (pandemic, market crash, collapse, bankruptcy, systemic crisis)\n\n" +
+            "Risk levels:\n" +
+            "- LOW: Minimal market impact\n" +
+            "- MEDIUM: Some sector impact possible\n" +
+            "- HIGH: Significant market-wide impact\n" +
+            "- CRITICAL: Immediate and widespread market impact\n\n" +
+            "Response format: {\"results\": [{\"id\": 0, \"eventType\": \"...\", \"riskLevel\": \"...\", \"summary\": \"...(2-3 sentence summary in Korean)\"}, ...]}";
+
     private final GlobalEventRepository globalEventRepository;
     private final ObjectMapper objectMapper;
 
@@ -145,16 +162,38 @@ public class GlobalEventClassifierService {
     }
 
     public List<GlobalEventEntity> classifyAndSave(List<KeywordMatchResult> matchResults) {
+        // Filter out already-existing events
+        List<KeywordMatchResult> newMatches = matchResults.stream()
+                .filter(m -> !globalEventRepository.existsBySourceUrl(m.article().getOriginalUrl()))
+                .toList();
+
+        if (newMatches.isEmpty()) {
+            log.info("No new articles to classify after deduplication.");
+            return List.of();
+        }
+
         List<GlobalEventEntity> savedEvents = new ArrayList<>();
 
-        for (KeywordMatchResult match : matchResults) {
-            try {
-                GlobalEventEntity event = classifySingle(match);
-                if (event != null) {
-                    savedEvents.add(globalEventRepository.save(event));
+        if (openAiClient != null) {
+            // Process in batches for cost efficiency
+            for (int i = 0; i < newMatches.size(); i += BATCH_SIZE) {
+                List<KeywordMatchResult> batch = newMatches.subList(i, Math.min(i + BATCH_SIZE, newMatches.size()));
+                try {
+                    List<GlobalEventEntity> batchResults = classifyBatch(batch);
+                    for (GlobalEventEntity event : batchResults) {
+                        savedEvents.add(globalEventRepository.save(event));
+                    }
+                } catch (Exception e) {
+                    log.error("Batch classification failed, falling back to keyword-based for {} articles", batch.size(), e);
+                    for (KeywordMatchResult match : batch) {
+                        savedEvents.add(globalEventRepository.save(buildFallbackEvent(match)));
+                    }
                 }
-            } catch (Exception e) {
-                log.error("Failed to classify article: {}", match.article().getTitle(), e);
+            }
+        } else {
+            // No OpenAI client — use keyword-based defaults
+            for (KeywordMatchResult match : newMatches) {
+                savedEvents.add(globalEventRepository.save(buildFallbackEvent(match)));
             }
         }
 
@@ -162,69 +201,82 @@ public class GlobalEventClassifierService {
         return savedEvents;
     }
 
-    private GlobalEventEntity classifySingle(KeywordMatchResult match) {
-        NewsArticleEntity article = match.article();
-
-        if (globalEventRepository.existsBySourceUrl(article.getOriginalUrl())) {
-            return null;
+    private List<GlobalEventEntity> classifyBatch(List<KeywordMatchResult> batch) {
+        // Build numbered headline list
+        StringBuilder userPrompt = new StringBuilder("Classify these news headlines:\n");
+        for (int i = 0; i < batch.size(); i++) {
+            userPrompt.append(i).append(". \"").append(batch.get(i).article().getTitle()).append("\"\n");
         }
 
-        EventType eventType = match.keywordMatchedType();
-        RiskLevel riskLevel = determineDefaultRiskLevel(eventType);
-        String summary = article.getTitle();
+        String response = openAiClient.chat(BATCH_SYSTEM_PROMPT, userPrompt.toString(), MAX_TOKENS_BATCH);
+        Map<Integer, ClassificationResult> resultMap = parseBatchResponse(response);
 
-        if (openAiClient != null) {
-            try {
-                ClassificationResult aiResult = classifyWithOpenAi(article.getTitle());
-                if (aiResult != null) {
-                    eventType = aiResult.eventType();
-                    riskLevel = aiResult.riskLevel();
-                    summary = aiResult.summary();
-                }
-            } catch (Exception e) {
-                log.warn("OpenAI classification failed for '{}', using keyword-based fallback: {}",
-                        article.getTitle(), e.getMessage());
+        List<GlobalEventEntity> events = new ArrayList<>();
+        for (int i = 0; i < batch.size(); i++) {
+            KeywordMatchResult match = batch.get(i);
+            ClassificationResult aiResult = resultMap.get(i);
+
+            if (aiResult != null) {
+                events.add(new GlobalEventEntity(
+                        null,
+                        aiResult.eventType(),
+                        match.article().getTitle(),
+                        aiResult.summary(),
+                        match.article().getOriginalUrl(),
+                        match.article().getSourceName(),
+                        aiResult.riskLevel(),
+                        match.article().getPublishedAt(),
+                        null
+                ));
+            } else {
+                events.add(buildFallbackEvent(match));
             }
         }
 
-        return new GlobalEventEntity(
-                null,
-                eventType,
-                article.getTitle(),
-                summary,
-                article.getOriginalUrl(),
-                article.getSourceName(),
-                riskLevel,
-                article.getPublishedAt(),
-                null
-        );
+        log.info("Batch classified {} articles with OpenAI ({} successful AI results)",
+                batch.size(), resultMap.size());
+        return events;
     }
 
-    private ClassificationResult classifyWithOpenAi(String title) {
-        String userPrompt = "Classify this news headline:\n\"" + title + "\"";
-        String response = openAiClient.chat(SYSTEM_PROMPT, userPrompt, MAX_TOKENS);
-
+    private Map<Integer, ClassificationResult> parseBatchResponse(String response) {
+        Map<Integer, ClassificationResult> resultMap = new HashMap<>();
         try {
             JsonNode root = objectMapper.readTree(response);
+            JsonNode results = root.path("results");
 
-            String eventTypeStr = root.path("eventType").asText("");
-            String riskLevelStr = root.path("riskLevel").asText("");
-            String summary = root.path("summary").asText(title);
-
-            EventType eventType = parseEventType(eventTypeStr);
-            RiskLevel riskLevel = parseRiskLevel(riskLevelStr);
-
-            if (eventType == null || riskLevel == null) {
-                log.warn("Invalid OpenAI classification response: eventType={}, riskLevel={}",
-                        eventTypeStr, riskLevelStr);
-                return null;
+            if (!results.isArray()) {
+                log.warn("Batch response has no 'results' array: {}", response);
+                return resultMap;
             }
 
-            return new ClassificationResult(eventType, riskLevel, summary);
+            for (JsonNode item : results) {
+                int id = item.path("id").asInt(-1);
+                EventType eventType = parseEventType(item.path("eventType").asText(""));
+                RiskLevel riskLevel = parseRiskLevel(item.path("riskLevel").asText(""));
+                String summary = item.path("summary").asText("");
+
+                if (id >= 0 && eventType != null && riskLevel != null) {
+                    resultMap.put(id, new ClassificationResult(eventType, riskLevel, summary));
+                }
+            }
         } catch (Exception e) {
-            log.error("Failed to parse OpenAI classification response: {}", response, e);
-            return null;
+            log.error("Failed to parse batch classification response: {}", response, e);
         }
+        return resultMap;
+    }
+
+    private GlobalEventEntity buildFallbackEvent(KeywordMatchResult match) {
+        return new GlobalEventEntity(
+                null,
+                match.keywordMatchedType(),
+                match.article().getTitle(),
+                match.article().getTitle(),
+                match.article().getOriginalUrl(),
+                match.article().getSourceName(),
+                determineDefaultRiskLevel(match.keywordMatchedType()),
+                match.article().getPublishedAt(),
+                null
+        );
     }
 
     private EventType matchKeyword(String titleLower) {

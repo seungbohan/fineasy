@@ -92,6 +92,77 @@ public class SecEdgarApiClient {
     }
 
     /**
+     * Fetch XBRL company facts for a given CIK.
+     * Contains financial data including shares outstanding.
+     */
+    public JsonNode fetchCompanyFacts(String cik) {
+        try {
+            String url = properties.resolvedBaseUrl() + "/api/xbrl/companyfacts/CIK" + cik + ".json";
+
+            String body = webClient.get()
+                    .uri(url)
+                    .retrieve()
+                    .bodyToMono(String.class)
+                    .retryWhen(reactor.util.retry.Retry.backoff(2, Duration.ofSeconds(1))
+                            .maxBackoff(Duration.ofSeconds(5)))
+                    .block(Duration.ofSeconds(30));
+
+            if (body == null || body.isBlank()) {
+                log.warn("SEC EDGAR company facts returned empty for CIK={}", cik);
+                return null;
+            }
+
+            return objectMapper.readTree(body);
+        } catch (Exception e) {
+            log.error("SEC EDGAR company facts API failed for CIK={}: {}", cik, e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Extract the most recent shares outstanding from company facts.
+     */
+    public Long extractSharesOutstanding(JsonNode companyFacts) {
+        if (companyFacts == null) return null;
+
+        // Try us-gaap CommonStockSharesOutstanding first
+        Long shares = extractLatestFact(companyFacts,
+                "us-gaap", "CommonStockSharesOutstanding");
+
+        // Fallback: EntityCommonStockSharesOutstanding (dei namespace)
+        if (shares == null) {
+            shares = extractLatestFact(companyFacts,
+                    "dei", "EntityCommonStockSharesOutstanding");
+        }
+
+        return shares;
+    }
+
+    private Long extractLatestFact(JsonNode companyFacts, String taxonomy, String concept) {
+        JsonNode units = companyFacts.path("facts").path(taxonomy).path(concept).path("units");
+        JsonNode sharesArray = units.path("shares");
+
+        if (!sharesArray.isArray() || sharesArray.isEmpty()) {
+            return null;
+        }
+
+        // Get the most recent entry (last in the array, sorted by date)
+        long latestVal = 0;
+        String latestEnd = "";
+
+        for (JsonNode entry : sharesArray) {
+            String end = entry.path("end").asText("");
+            long val = entry.path("val").asLong(0);
+            if (val > 0 && end.compareTo(latestEnd) > 0) {
+                latestEnd = end;
+                latestVal = val;
+            }
+        }
+
+        return latestVal > 0 ? latestVal : null;
+    }
+
+    /**
      * Fetch recent SEC filings for a given CIK from submissions API.
      */
     public JsonNode fetchFilings(String cik) {

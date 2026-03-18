@@ -2,6 +2,7 @@ package com.fineasy.entity;
 
 import jakarta.persistence.*;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @Entity
@@ -34,6 +35,9 @@ public class StockEntity {
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
+    @Column(name = "market_cap_usd", precision = 24, scale = 2)
+    private BigDecimal marketCapUsd;
+
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
@@ -63,6 +67,7 @@ public class StockEntity {
     }
 
     public void updateName(String stockName) { this.stockName = stockName; }
+    public void updateMarketCapUsd(BigDecimal marketCapUsd) { this.marketCapUsd = marketCapUsd; }
 
     public Long getId() { return id; }
     public String getStockCode() { return stockCode; }
@@ -71,5 +76,6 @@ public class StockEntity {
     public String getSector() { return sector; }
     public boolean isActive() { return isActive; }
     public LocalDateTime getCreatedAt() { return createdAt; }
+    public BigDecimal getMarketCapUsd() { return marketCapUsd; }
     public LocalDateTime getUpdatedAt() { return updatedAt; }
 }

@@ -35,4 +35,12 @@ public interface StockRepository extends JpaRepository<StockEntity, Long> {
 
     @Query("SELECT s FROM StockEntity s WHERE s.isActive = true AND s.sector = :sector ORDER BY s.id ASC")
     List<StockEntity> findBySector(@Param("sector") String sector);
+
+    /**
+     * Find overseas stocks ordered by market cap (descending, nulls last).
+     */
+    @Query("SELECT s FROM StockEntity s WHERE s.isActive = true AND s.market IN :markets " +
+            "ORDER BY CASE WHEN s.marketCapUsd IS NULL THEN 1 ELSE 0 END, s.marketCapUsd DESC")
+    List<StockEntity> findOverseasByMarketCap(@Param("markets") java.util.List<com.fineasy.entity.Market> markets,
+                                              org.springframework.data.domain.Pageable pageable);
 }

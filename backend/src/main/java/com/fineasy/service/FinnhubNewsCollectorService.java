@@ -55,8 +55,8 @@ public class FinnhubNewsCollectorService {
                 int saved = collectNewsForSymbol(symbol, from, to);
                 totalSaved += saved;
 
-                // Finnhub free tier has rate limits; brief pause between calls
-                Thread.sleep(200);
+                // Finnhub free tier: 60 calls/min — 1 second delay keeps us safely under limit
+                Thread.sleep(1000);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 log.warn("Finnhub news collection interrupted at symbol={}", symbol);
@@ -137,15 +137,22 @@ public class FinnhubNewsCollectorService {
     }
 
     /**
-     * Get the list of overseas stock symbols to collect news for.
-     * Uses up to 50 active overseas stocks from the database.
+     * Get ALL overseas stock symbols ordered by market cap (descending).
+     * Larger companies are collected first so that if the process is interrupted,
+     * the most important stocks already have their news.
      */
     public List<String> getOverseasStockSymbols() {
         List<Market> overseasMarkets = List.of(Market.NASDAQ, Market.NYSE, Market.AMEX);
-        List<StockEntity> stocks = stockRepository.findByMarkets(
-                overseasMarkets,
-                org.springframework.data.domain.PageRequest.of(0, 50));
 
+        List<StockEntity> stocks = stockRepository.findOverseasByMarketCap(
+                overseasMarkets,
+                org.springframework.data.domain.Pageable.unpaged());
+
+        if (stocks.isEmpty()) {
+            stocks = stockRepository.findAllByMarkets(overseasMarkets);
+        }
+
+        log.info("Selected {} overseas symbols for Finnhub news collection (market-cap ranked)", stocks.size());
         return stocks.stream()
                 .map(StockEntity::getStockCode)
                 .toList();
