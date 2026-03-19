@@ -16,6 +16,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -28,9 +29,13 @@ public class MarketService {
 
     private static final Logger log = LoggerFactory.getLogger(MarketService.class);
 
+    private static final String MARKET_INDEX_CACHE_KEY = "market:indices";
+    private static final Duration MARKET_INDEX_CACHE_TTL = Duration.ofMinutes(5);
+
     private final MarketDataProvider marketDataProvider;
     private final ObjectMapper objectMapper;
     private final AiMarketSummaryService aiMarketSummaryService;
+    private final RedisCacheHelper redisCacheHelper;
 
     private final StockRepository stockRepository;
     private final StockPriceRepository stockPriceRepository;
@@ -40,16 +45,25 @@ public class MarketService {
     public MarketService(MarketDataProvider marketDataProvider,
                           ObjectMapper objectMapper,
                           AiMarketSummaryService aiMarketSummaryService,
+                          RedisCacheHelper redisCacheHelper,
                           StockRepository stockRepository,
                           StockPriceRepository stockPriceRepository) {
         this.marketDataProvider = marketDataProvider;
         this.objectMapper = objectMapper;
         this.aiMarketSummaryService = aiMarketSummaryService;
+        this.redisCacheHelper = redisCacheHelper;
         this.stockRepository = stockRepository;
         this.stockPriceRepository = stockPriceRepository;
     }
 
     public MarketIndexResponse getMarketIndices() {
+        // Check Redis cache first
+        MarketIndexResponse cached = redisCacheHelper.getFromCache(
+                MARKET_INDEX_CACHE_KEY, MarketIndexResponse.class);
+        if (cached != null) {
+            return cached;
+        }
+
         List<MarketIndex> indices = marketDataProvider.getMarketIndices();
 
         List<MarketIndexResponse.IndexData> indexDataList = indices.stream()
@@ -63,7 +77,12 @@ public class MarketService {
                 ))
                 .toList();
 
-        return new MarketIndexResponse(indexDataList, Instant.now());
+        MarketIndexResponse response = new MarketIndexResponse(indexDataList, Instant.now());
+
+        // Cache for 5 minutes
+        redisCacheHelper.putToCache(MARKET_INDEX_CACHE_KEY, response, MARKET_INDEX_CACHE_TTL);
+
+        return response;
     }
 
     public MarketSummaryResponse getMarketSummary() {
