@@ -44,7 +44,7 @@ services:
     restart: unless-stopped
     environment:
       SPRING_PROFILES_ACTIVE: prod
-      JAVA_OPTS: "-Xms96m -Xmx192m -XX:+UseG1GC -XX:MaxGCPauseMillis=200 -XX:+UseStringDeduplication -XX:MaxMetaspaceSize=96m"
+      JAVA_OPTS: "-Xms96m -Xmx192m -XX:+UseG1GC -XX:MaxGCPauseMillis=200 -XX:+UseStringDeduplication -XX:MaxMetaspaceSize=160m"
       DB_HOST: postgres
       DB_PORT: 5432
       DB_NAME: ${DB_NAME:-fineasydb}
