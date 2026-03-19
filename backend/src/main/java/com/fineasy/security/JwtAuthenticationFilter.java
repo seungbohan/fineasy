@@ -22,9 +22,12 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private static final String BEARER_PREFIX = "Bearer ";
 
     private final TokenProvider tokenProvider;
+    private final TokenBlacklistService tokenBlacklistService;
 
-    public JwtAuthenticationFilter(TokenProvider tokenProvider) {
+    public JwtAuthenticationFilter(TokenProvider tokenProvider,
+                                    TokenBlacklistService tokenBlacklistService) {
         this.tokenProvider = tokenProvider;
+        this.tokenBlacklistService = tokenBlacklistService;
     }
 
     @Override
@@ -33,7 +36,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                                     FilterChain filterChain) throws ServletException, IOException {
         String token = extractToken(request);
 
-        if (token != null && tokenProvider.validateToken(token) && !tokenProvider.isRefreshToken(token)) {
+        if (token != null
+                && tokenProvider.validateToken(token)
+                && !tokenProvider.isRefreshToken(token)
+                && !tokenBlacklistService.isBlacklisted(token)) {
+
             long userId = tokenProvider.getUserIdFromToken(token);
             String email = tokenProvider.getEmailFromToken(token);
 

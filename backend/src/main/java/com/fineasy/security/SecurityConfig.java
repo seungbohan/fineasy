@@ -41,6 +41,7 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
+                // CSRF disabled: stateless JWT API — no cookies for auth, safe for REST
                 .csrf(AbstractHttpConfigurer::disable)
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .sessionManagement(session ->
@@ -66,7 +67,7 @@ public class SecurityConfig {
                         .anyRequest().authenticated()
                 )
                 .headers(headers -> headers
-                        .frameOptions(frame -> frame.sameOrigin())
+                        .frameOptions(frame -> frame.deny())
                         .contentTypeOptions(opt -> {})
                         .httpStrictTransportSecurity(hsts -> hsts
                                 .includeSubDomains(true)
@@ -106,14 +107,15 @@ public class SecurityConfig {
         CorsConfiguration config = new CorsConfiguration();
         List<String> origins = Arrays.stream(allowedOrigins.split(","))
                 .map(String::trim)
+                .filter(o -> !o.equals("*")) // Never allow wildcard in CORS
                 .toList();
-        if (origins.contains("*")) {
-            config.setAllowedOriginPatterns(List.of("*"));
-        } else {
-            config.setAllowedOrigins(origins);
+
+        if (origins.isEmpty()) {
+            origins = List.of("http://localhost:3000");
         }
+        config.setAllowedOrigins(origins);
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"));
-        config.setAllowedHeaders(List.of("*"));
+        config.setAllowedHeaders(List.of("Authorization", "Content-Type", "X-Requested-With"));
         config.setAllowCredentials(true);
         config.setMaxAge(3600L);
 

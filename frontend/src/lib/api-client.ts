@@ -1,3 +1,5 @@
+import { useAuthStore } from '@/stores/auth-store';
+
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1';
 
 interface ApiResponse<T> {
@@ -26,7 +28,8 @@ class ApiClient {
     };
 
     if (typeof window !== 'undefined') {
-      const token = localStorage.getItem('accessToken');
+      // Get access token from zustand store (memory only, not localStorage)
+      const token = useAuthStore.getState().accessToken;
       if (token) {
         headers['Authorization'] = `Bearer ${token}`;
       }
@@ -40,7 +43,9 @@ class ApiClient {
 
     this.refreshing = (async () => {
       try {
-        const refreshToken = localStorage.getItem('refreshToken');
+        const refreshToken = typeof window !== 'undefined'
+          ? localStorage.getItem('refreshToken')
+          : null;
         if (!refreshToken) return false;
 
         const res = await fetch(`${this.baseUrl}/auth/refresh`, {
@@ -54,8 +59,12 @@ class ApiClient {
         const json: ApiResponse<{ accessToken: string; refreshToken: string }> = await res.json();
         if (!json.success || !json.data) return false;
 
-        localStorage.setItem('accessToken', json.data.accessToken);
-        localStorage.setItem('refreshToken', json.data.refreshToken);
+        // Store new tokens: accessToken in memory, refreshToken in localStorage
+        useAuthStore.getState().login(
+          useAuthStore.getState().user!,
+          json.data.accessToken,
+          json.data.refreshToken,
+        );
         return true;
       } catch {
         return false;
@@ -84,9 +93,7 @@ class ApiClient {
     }
 
     if (res.status === 401 && typeof window !== 'undefined') {
-      localStorage.removeItem('accessToken');
-      localStorage.removeItem('refreshToken');
-      localStorage.removeItem('user');
+      useAuthStore.getState().logout();
     }
 
     if (!res.ok) {

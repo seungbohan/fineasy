@@ -19,7 +19,13 @@ import java.util.concurrent.atomic.AtomicInteger;
 @Component
 public class RateLimitFilter extends OncePerRequestFilter {
 
-    private static final int MAX_REQUESTS = 10;
+    // Auth endpoints: strict limit (brute force prevention)
+    private static final int AUTH_MAX_REQUESTS = 10;
+    // Public API: generous limit (normal browsing)
+    private static final int PUBLIC_MAX_REQUESTS = 120;
+    // Authenticated API: higher limit
+    private static final int AUTHENTICATED_MAX_REQUESTS = 300;
+
     private static final long WINDOW_MS = 60_000L;
 
     private final ObjectMapper objectMapper;
@@ -35,13 +41,29 @@ public class RateLimitFilter extends OncePerRequestFilter {
                                     FilterChain filterChain) throws ServletException, IOException {
         String path = request.getRequestURI();
 
-        if (!path.startsWith("/api/v1/auth/")) {
+        // Skip non-API paths (static assets, health checks)
+        if (!path.startsWith("/api/")) {
             filterChain.doFilter(request, response);
             return;
         }
 
         String clientIp = getClientIp(request);
-        String key = clientIp + ":" + path;
+
+        // Determine rate limit tier
+        int maxRequests;
+        String tierKey;
+        if (path.startsWith("/api/v1/auth/")) {
+            maxRequests = AUTH_MAX_REQUESTS;
+            tierKey = "auth";
+        } else if (request.getHeader("Authorization") != null) {
+            maxRequests = AUTHENTICATED_MAX_REQUESTS;
+            tierKey = "authed";
+        } else {
+            maxRequests = PUBLIC_MAX_REQUESTS;
+            tierKey = "public";
+        }
+
+        String key = clientIp + ":" + tierKey;
 
         RateInfo rateInfo = rateLimitMap.compute(key, (k, existing) -> {
             long now = System.currentTimeMillis();
@@ -52,7 +74,12 @@ public class RateLimitFilter extends OncePerRequestFilter {
             return existing;
         });
 
-        if (rateInfo.count.get() > MAX_REQUESTS) {
+        // Add rate limit headers
+        response.setHeader("X-RateLimit-Limit", String.valueOf(maxRequests));
+        response.setHeader("X-RateLimit-Remaining",
+                String.valueOf(Math.max(0, maxRequests - rateInfo.count.get())));
+
+        if (rateInfo.count.get() > maxRequests) {
             response.setContentType(MediaType.APPLICATION_JSON_VALUE);
             response.setStatus(429);
             response.setHeader("Retry-After", "60");
@@ -70,6 +97,10 @@ public class RateLimitFilter extends OncePerRequestFilter {
         if (xff != null && !xff.isBlank()) {
             return xff.split(",")[0].trim();
         }
+        String realIp = request.getHeader("X-Real-IP");
+        if (realIp != null && !realIp.isBlank()) {
+            return realIp;
+        }
         return request.getRemoteAddr();
     }
 
@@ -80,7 +111,6 @@ public class RateLimitFilter extends OncePerRequestFilter {
         rateLimitMap.entrySet().removeIf(entry -> now - entry.getValue().windowStart > WINDOW_MS);
         int removed = before - rateLimitMap.size();
         if (removed > 0) {
-
             org.slf4j.LoggerFactory.getLogger(RateLimitFilter.class)
                     .debug("Evicted {} expired rate limit entries", removed);
         }
