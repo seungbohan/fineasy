@@ -14,7 +14,7 @@ export default function robots(): MetadataRoute.Robots {
         disallow: ['/mypage', '/login', '/signup', '/api/'],
       },
     ],
-    sitemap: 'https://fineasy.kr/sitemap.xml',
-    host: 'https://fineasy.kr',
+    sitemap: 'https://fineasy.co.kr/sitemap.xml',
+    host: 'https://fineasy.co.kr',
   };
 }
