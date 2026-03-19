@@ -2,7 +2,7 @@
 export const SITE_URL = 'https://fineasy.kr';
 export const SITE_NAME = 'FinEasy';
 export const SITE_DESCRIPTION =
-  '금융 초보자도 쉽게 이해하는 주식 분석, 금융 용어 사전, AI 리포트, 거시경제 지표를 제공하는 금융 정보 플랫폼입니다.';
+  '주식 초보도 쉽게 시작하는 AI 종목 분석, 금융 용어 사전(한국은행 700선), 실시간 시세, 투자 학습. 사회초년생 재테크의 첫걸음, FinEasy에서 무료로 시작하세요.';
 export const SITE_LOCALE = 'ko_KR';
 
 export const DEFAULT_OG_IMAGE = `${SITE_URL}/og-image.png`;

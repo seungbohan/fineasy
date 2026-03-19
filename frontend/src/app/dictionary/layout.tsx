@@ -2,9 +2,9 @@ import type { Metadata } from 'next';
 import { createPageMetadata } from '@/lib/seo';
 
 export const metadata: Metadata = createPageMetadata({
-  title: '금융 용어 사전 - 경제금융용어 700선',
+  title: '금융 용어 사전 - PER PBR 뜻, 주식 용어 정리, 한국은행 700선',
   description:
-    '한국은행 경제금융용어 700선과 기초 금융 용어를 쉽게 검색하고 이해하세요. 초성 검색, 카테고리 분류, AI 쉬운 설명 기능을 제공합니다.',
+    'PER, PBR, EPS 뜻부터 한국은행 경제금융용어 700선까지. 주식 초보가 꼭 알아야 할 금융 용어를 AI가 쉽게 설명합니다. 초성 검색, 카테고리 분류 지원.',
   path: '/dictionary',
 });
 
