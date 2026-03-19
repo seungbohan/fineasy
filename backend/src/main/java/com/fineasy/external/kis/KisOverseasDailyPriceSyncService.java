@@ -23,6 +23,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.stream.Collectors;
 
 import static com.fineasy.external.kis.KisResponseParser.*;
 
@@ -177,10 +178,20 @@ public class KisOverseasDailyPriceSyncService {
         }
 
         if (!allPrices.isEmpty()) {
-            stockPriceRepository.saveAll(allPrices);
+            // Filter out existing dates to avoid duplicate key errors
+            Set<LocalDate> existingDates = stockPriceRepository.findExistingDates(
+                    stock.getId(),
+                    allPrices.stream().map(StockPriceEntity::getTradeDate).collect(Collectors.toSet()));
+            List<StockPriceEntity> newPrices = allPrices.stream()
+                    .filter(p -> !existingDates.contains(p.getTradeDate()))
+                    .toList();
+            if (!newPrices.isEmpty()) {
+                stockPriceRepository.saveAll(newPrices);
+            }
+            return newPrices.size();
         }
 
-        return allPrices.size();
+        return 0;
     }
 
     private List<StockPriceEntity> fetchOverseasDailyData(StockEntity stock,

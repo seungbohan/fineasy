@@ -42,4 +42,12 @@ public interface StockPriceRepository extends JpaRepository<StockPriceEntity, Lo
     List<StockPriceEntity> findRecentByStockIds(
             @Param("stockIds") Collection<Long> stockIds,
             @Param("since") LocalDate since);
+
+    @Query("SELECT sp.tradeDate FROM StockPriceEntity sp " +
+            "WHERE sp.stock.id = :stockId AND sp.tradeDate IN :dates")
+    Set<LocalDate> findExistingDates(
+            @Param("stockId") Long stockId,
+            @Param("dates") Collection<LocalDate> dates);
+
+    boolean existsByStockIdAndTradeDate(Long stockId, LocalDate tradeDate);
 }
