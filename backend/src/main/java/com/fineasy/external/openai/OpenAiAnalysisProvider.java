@@ -7,6 +7,7 @@ import com.fineasy.dto.response.AnalysisReportResponse;
 import com.fineasy.dto.response.PredictionResponse;
 import com.fineasy.dto.response.StockFinancialsResponse;
 import com.fineasy.entity.*;
+import com.fineasy.repository.NewsStockTagRepository;
 import com.fineasy.service.AiAnalysisProvider;
 import com.fineasy.service.EmbeddingService;
 import com.fineasy.service.FinanceOntology;
@@ -14,6 +15,7 @@ import com.fineasy.service.GlobalEventService;
 import com.fineasy.service.MacroService;
 import com.fineasy.service.NewsService;
 import com.fineasy.service.StockDataProvider;
+import com.fineasy.service.StockRelationInferenceService;
 import com.fineasy.service.StockService;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import io.github.resilience4j.retry.annotation.Retry;
@@ -24,8 +26,7 @@ import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 @Component
 @Primary
@@ -54,6 +55,8 @@ public class OpenAiAnalysisProvider implements AiAnalysisProvider {
     private final GlobalEventService globalEventService;
     private final EmbeddingService embeddingService;
     private final FinanceOntology financeOntology;
+    private final NewsStockTagRepository newsStockTagRepository;
+    private final StockRelationInferenceService stockRelationInferenceService;
 
     public OpenAiAnalysisProvider(OpenAiClient openAiClient,
                                    OpenAiPromptBuilder promptBuilder,
@@ -64,7 +67,9 @@ public class OpenAiAnalysisProvider implements AiAnalysisProvider {
                                    StockDataProvider stockDataProvider,
                                    GlobalEventService globalEventService,
                                    EmbeddingService embeddingService,
-                                   FinanceOntology financeOntology) {
+                                   FinanceOntology financeOntology,
+                                   NewsStockTagRepository newsStockTagRepository,
+                                   StockRelationInferenceService stockRelationInferenceService) {
         this.openAiClient = openAiClient;
         this.promptBuilder = promptBuilder;
         this.objectMapper = objectMapper;
@@ -75,6 +80,8 @@ public class OpenAiAnalysisProvider implements AiAnalysisProvider {
         this.globalEventService = globalEventService;
         this.embeddingService = embeddingService;
         this.financeOntology = financeOntology;
+        this.newsStockTagRepository = newsStockTagRepository;
+        this.stockRelationInferenceService = stockRelationInferenceService;
     }
 
     @Override
@@ -160,23 +167,102 @@ public class OpenAiAnalysisProvider implements AiAnalysisProvider {
     }
 
     /**
-     * RAG-based news retrieval: uses semantic search to find the most relevant news
-     * for a given stock, falling back to keyword-based search if embeddings unavailable.
+     * Graph-enhanced RAG news retrieval:
+     * 1. Direct tagged news with impact metadata (from NewsStockTagEntity)
+     * 2. Related stocks' news via relationship graph (multi-hop)
+     * 3. Semantic search to fill remaining slots
+     * Falls back to keyword-based search if all else fails.
      */
     private List<String> fetchSemanticNews(String stockName, String stockCode, int limit) {
-        try {
-            String query = stockName + " " + stockCode;
-            var semanticResults = embeddingService.searchSimilarNews(
-                    query, limit, LocalDateTime.now().minusDays(7));
+        List<String> result = new ArrayList<>();
+        LocalDateTime since = LocalDateTime.now().minusDays(7);
 
-            if (semanticResults != null && semanticResults.size() >= 5) {
-                log.debug("RAG: found {} semantically relevant articles for {}", semanticResults.size(), stockCode);
-                return semanticResults.stream()
-                        .map(com.fineasy.entity.NewsArticleEntity::getTitle)
-                        .toList();
+        try {
+            // Step 1: Direct tagged news with impact context
+            var directTags = newsStockTagRepository.findByStockCodeAndImpactType(
+                    stockCode, com.fineasy.entity.ImpactType.DIRECT, since,
+                    org.springframework.data.domain.PageRequest.of(0, 8));
+
+            for (var tag : directTags) {
+                String prefix = tag.getImpactDirection() != null
+                        ? "[" + tag.getImpactDirection() + "] "
+                        : "";
+                result.add(prefix + tag.getNewsArticle().getTitle());
+            }
+
+            // Step 2: Supply chain / competitor news from relationship graph
+            if (result.size() < limit) {
+                var relatedTags = newsStockTagRepository.findByStockCodeAndImpactTypeIn(
+                        stockCode,
+                        List.of(com.fineasy.entity.ImpactType.SUPPLY_CHAIN,
+                                com.fineasy.entity.ImpactType.COMPETITOR,
+                                com.fineasy.entity.ImpactType.INDIRECT),
+                        since,
+                        org.springframework.data.domain.PageRequest.of(0, 4));
+
+                for (var tag : relatedTags) {
+                    String prefix = "[" + tag.getImpactType() + "] ";
+                    result.add(prefix + tag.getNewsArticle().getTitle());
+                }
+            }
+
+            // Step 3: News from graph-related stocks (multi-hop)
+            if (result.size() < limit) {
+                try {
+                    StockEntity stock = stockService.getStockEntityByCode(stockCode);
+                    List<Long> relatedIds = stockRelationInferenceService.findRelatedStockIds(
+                            stock.getId(), 2, 0.5);
+
+                    if (!relatedIds.isEmpty()) {
+                        List<String> relatedCodes = relatedIds.stream()
+                                .map(id -> {
+                                    try {
+                                        return stockService.getStockEntityById(id).getStockCode();
+                                    } catch (Exception e) {
+                                        return null;
+                                    }
+                                })
+                                .filter(java.util.Objects::nonNull)
+                                .toList();
+
+                        if (!relatedCodes.isEmpty()) {
+                            var relatedNews = newsService.getRecentNewsByStockCodes(
+                                    relatedCodes, limit - result.size());
+                            relatedNews.forEach(title -> result.add("[관련종목] " + title));
+                        }
+                    }
+                } catch (Exception e) {
+                    log.debug("Graph-based news search failed for {}: {}", stockCode, e.getMessage());
+                }
+            }
+
+            // Step 4: Fill remaining with semantic search
+            if (result.size() < limit) {
+                String query = stockName + " " + stockCode;
+                var semanticResults = embeddingService.searchSimilarNews(
+                        query, limit - result.size(), since);
+
+                if (semanticResults != null) {
+                    Set<String> existingTitles = new HashSet<>(result);
+                    for (var article : semanticResults) {
+                        String title = article.getTitle();
+                        if (!existingTitles.contains(title)
+                                && !existingTitles.contains("[POSITIVE] " + title)
+                                && !existingTitles.contains("[NEGATIVE] " + title)
+                                && !existingTitles.contains("[NEUTRAL] " + title)) {
+                            result.add(title);
+                        }
+                    }
+                }
+            }
+
+            if (result.size() >= 5) {
+                log.debug("Graph+RAG: found {} articles for {} (direct={}, total={})",
+                        result.size(), stockCode, directTags.size(), result.size());
+                return result.stream().limit(limit).toList();
             }
         } catch (Exception e) {
-            log.debug("RAG semantic search failed for {}, falling back to keyword: {}", stockCode, e.getMessage());
+            log.debug("Graph+RAG search failed for {}, falling back to keyword: {}", stockCode, e.getMessage());
         }
 
         // Fallback to existing keyword-based search

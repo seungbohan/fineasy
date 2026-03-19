@@ -3,12 +3,11 @@ package com.fineasy.service;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fineasy.config.OpenAiConfig;
-import com.fineasy.entity.NewsArticleEntity;
-import com.fineasy.entity.Sentiment;
-import com.fineasy.entity.StockEntity;
+import com.fineasy.entity.*;
 import com.fineasy.external.openai.OpenAiClient;
 import com.fineasy.external.openai.OpenAiPromptBuilder;
 import com.fineasy.repository.NewsArticleRepository;
+import com.fineasy.repository.NewsStockTagRepository;
 import com.fineasy.repository.StockRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -25,6 +24,7 @@ public class NewsSentimentService {
 
     private final NewsArticleRepository newsArticleRepository;
     private final StockRepository stockRepository;
+    private final NewsStockTagRepository newsStockTagRepository;
     private final OpenAiClient openAiClient;
     private final OpenAiPromptBuilder promptBuilder;
     private final ObjectMapper objectMapper;
@@ -37,6 +37,7 @@ public class NewsSentimentService {
 
     public NewsSentimentService(NewsArticleRepository newsArticleRepository,
                                  StockRepository stockRepository,
+                                 NewsStockTagRepository newsStockTagRepository,
                                  OpenAiClient openAiClient,
                                  OpenAiPromptBuilder promptBuilder,
                                  ObjectMapper objectMapper,
@@ -44,6 +45,7 @@ public class NewsSentimentService {
                                  KeywordSentimentAnalyzer keywordSentimentAnalyzer) {
         this.newsArticleRepository = newsArticleRepository;
         this.stockRepository = stockRepository;
+        this.newsStockTagRepository = newsStockTagRepository;
         this.openAiClient = openAiClient;
         this.promptBuilder = promptBuilder;
         this.objectMapper = objectMapper;
@@ -186,13 +188,21 @@ public class NewsSentimentService {
                     setDefaultSentiment(article);
                 }
 
-                JsonNode stocksNode = result.path("stocks");
-                if (stocksNode.isArray()) {
-                    for (JsonNode stockName : stocksNode) {
-                        String name = stockName.asText().trim();
-                        StockEntity entity = cache.get(name);
-                        if (entity != null && !article.getTaggedStocks().contains(entity)) {
-                            article.getTaggedStocks().add(entity);
+                // Process enhanced stock impacts (new format with impact metadata)
+                JsonNode stockImpacts = result.path("stockImpacts");
+                if (stockImpacts.isArray() && !stockImpacts.isEmpty()) {
+                    processStockImpacts(article, stockImpacts, cache);
+                } else {
+                    // Fallback: try legacy "stocks" array for backward compatibility
+                    JsonNode stocksNode = result.path("stocks");
+                    if (stocksNode.isArray()) {
+                        for (JsonNode stockName : stocksNode) {
+                            String name = stockName.asText().trim();
+                            StockEntity entity = cache.get(name);
+                            if (entity != null && !article.getTaggedStocks().contains(entity)) {
+                                article.getTaggedStocks().add(entity);
+                                saveEnhancedTag(article, entity, ImpactType.DIRECT, ImpactDirection.NEUTRAL, 0.5);
+                            }
                         }
                     }
                 }
@@ -216,6 +226,67 @@ public class NewsSentimentService {
         return nonStockRelated;
     }
 
+    private void processStockImpacts(NewsArticleEntity article, JsonNode stockImpacts,
+                                      Map<String, StockEntity> cache) {
+        for (JsonNode impact : stockImpacts) {
+            String name = impact.path("name").asText("").trim();
+            if (name.isEmpty()) continue;
+
+            StockEntity entity = cache.get(name);
+            if (entity == null) continue;
+
+            // Add to legacy taggedStocks for backward compatibility
+            if (!article.getTaggedStocks().contains(entity)) {
+                article.getTaggedStocks().add(entity);
+            }
+
+            // Parse impact metadata
+            ImpactType impactType = parseImpactType(impact.path("impact").asText("DIRECT"));
+            ImpactDirection direction = parseImpactDirection(impact.path("direction").asText("NEUTRAL"));
+            double relevance = impact.path("relevance").asDouble(0.5);
+
+            saveEnhancedTag(article, entity, impactType, direction, relevance);
+        }
+    }
+
+    private void saveEnhancedTag(NewsArticleEntity article, StockEntity stock,
+                                  ImpactType impactType, ImpactDirection direction,
+                                  double relevance) {
+        try {
+            if (article.getId() == null) return; // Article not yet persisted
+
+            Optional<NewsStockTagEntity> existing =
+                    newsStockTagRepository.findByNewsArticleIdAndStockId(article.getId(), stock.getId());
+
+            if (existing.isPresent()) {
+                existing.get().updateImpact(impactType, direction, relevance);
+                newsStockTagRepository.save(existing.get());
+            } else {
+                newsStockTagRepository.save(
+                        new NewsStockTagEntity(article, stock, impactType, direction, relevance));
+            }
+        } catch (Exception e) {
+            log.debug("Failed to save enhanced tag for article={}, stock={}: {}",
+                    article.getId(), stock.getStockCode(), e.getMessage());
+        }
+    }
+
+    private ImpactType parseImpactType(String value) {
+        try {
+            return ImpactType.valueOf(value.toUpperCase());
+        } catch (IllegalArgumentException e) {
+            return ImpactType.DIRECT;
+        }
+    }
+
+    private ImpactDirection parseImpactDirection(String value) {
+        try {
+            return ImpactDirection.valueOf(value.toUpperCase());
+        } catch (IllegalArgumentException e) {
+            return ImpactDirection.NEUTRAL;
+        }
+    }
+
     private void tagStocksByNameMatch(List<NewsArticleEntity> articles) {
         Map<String, StockEntity> cache = getStockNameCache();
         for (NewsArticleEntity article : articles) {
@@ -232,6 +303,9 @@ public class NewsSentimentService {
             if (title.contains(entry.getKey())) {
                 if (!article.getTaggedStocks().contains(entry.getValue())) {
                     article.getTaggedStocks().add(entry.getValue());
+                    // Name match defaults to DIRECT/NEUTRAL
+                    saveEnhancedTag(article, entry.getValue(),
+                            ImpactType.DIRECT, ImpactDirection.NEUTRAL, 0.5);
                 }
             }
         }

@@ -1,7 +1,10 @@
 package com.fineasy.service;
 
+import com.fineasy.entity.DynamicOntologyEntity;
+import com.fineasy.repository.DynamicOntologyRepository;
 import org.springframework.stereotype.Component;
 
+import java.time.LocalDate;
 import java.util.*;
 
 /**
@@ -10,6 +13,12 @@ import java.util.*;
  */
 @Component
 public class FinanceOntology {
+
+    private final DynamicOntologyRepository dynamicOntologyRepository;
+
+    public FinanceOntology(DynamicOntologyRepository dynamicOntologyRepository) {
+        this.dynamicOntologyRepository = dynamicOntologyRepository;
+    }
 
     // Sector → sensitive macro factors
     private static final Map<String, SectorProfile> SECTOR_PROFILES = new LinkedHashMap<>();
@@ -134,20 +143,58 @@ public class FinanceOntology {
 
     /**
      * Build ontology context string for AI prompts.
+     * Combines static sector knowledge with dynamic market insights.
      */
     public String buildOntologyContext(String stockCode, String sector) {
-        SectorProfile profile = getSectorProfile(stockCode, sector);
-        if (profile == null) return "";
-
         StringBuilder sb = new StringBuilder();
-        sb.append("\n### 섹터 도메인 지식 (온톨로지)\n");
-        sb.append(String.format("- 섹터: %s (%s)\n", profile.nameKo(), profile.nameEn()));
-        sb.append(String.format("- 핵심 민감 지표: %s\n", String.join(", ", profile.sensitiveIndicators())));
-        sb.append(String.format("- 주요 산업 이슈: %s\n", String.join(", ", profile.keyIndustryFactors())));
-        sb.append(String.format("- 관련 이벤트 유형: %s\n", String.join(", ", profile.relevantEventTypes())));
-        sb.append(String.format("- 분석 가이드: %s\n", profile.analysisGuide()));
+
+        // Static ontology
+        SectorProfile profile = getSectorProfile(stockCode, sector);
+        if (profile != null) {
+            sb.append("\n### 섹터 도메인 지식 (온톨로지)\n");
+            sb.append(String.format("- 섹터: %s (%s)\n", profile.nameKo(), profile.nameEn()));
+            sb.append(String.format("- 핵심 민감 지표: %s\n", String.join(", ", profile.sensitiveIndicators())));
+            sb.append(String.format("- 주요 산업 이슈: %s\n", String.join(", ", profile.keyIndustryFactors())));
+            sb.append(String.format("- 관련 이벤트 유형: %s\n", String.join(", ", profile.relevantEventTypes())));
+            sb.append(String.format("- 분석 가이드: %s\n", profile.analysisGuide()));
+        }
+
+        // Dynamic ontology (auto-updated from recent news)
+        appendDynamicOntology(sb, stockCode, sector);
 
         return sb.toString();
+    }
+
+    private void appendDynamicOntology(StringBuilder sb, String stockCode, String sector) {
+        try {
+            List<DynamicOntologyEntity> entries =
+                    dynamicOntologyRepository.findValidBySectorOrStock(
+                            sector, stockCode, LocalDate.now());
+
+            if (entries.isEmpty()) return;
+
+            sb.append("\n### 최근 시장 동향 (자동 분석, 최근 2주)\n");
+
+            for (DynamicOntologyEntity entry : entries) {
+                switch (entry.getEntryType()) {
+                    case "HOT_ISSUE" -> sb.append(String.format(
+                            "- [핫이슈] %s: %s (관련: %s)\n",
+                            entry.getSubject(),
+                            entry.getDescription(),
+                            entry.getRelatedStocks() != null ? entry.getRelatedStocks() : ""));
+                    case "STOCK_RELATION" -> sb.append(String.format(
+                            "- [종목관계] %s: %s\n",
+                            entry.getSubject(), entry.getDescription()));
+                    case "EMERGING_THEME" -> sb.append(String.format(
+                            "- [신규테마] %s: %s (관련: %s)\n",
+                            entry.getSubject(),
+                            entry.getDescription(),
+                            entry.getRelatedStocks() != null ? entry.getRelatedStocks() : ""));
+                }
+            }
+        } catch (Exception e) {
+            // Dynamic ontology is optional — don't break analysis if it fails
+        }
     }
 
     public record SectorProfile(

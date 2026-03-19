@@ -13,6 +13,8 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
+
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -108,6 +110,12 @@ public class KeywordAlertService {
     }
 
     private NewsArticleResponse toNewsResponse(NewsArticleEntity article) {
+        List<NewsArticleResponse.TaggedStockInfo> taggedStocks = article.getTaggedStocks() != null
+                ? article.getTaggedStocks().stream()
+                    .map(s -> new NewsArticleResponse.TaggedStockInfo(s.getStockCode(), s.getStockName()))
+                    .toList()
+                : List.of();
+
         return new NewsArticleResponse(
                 article.getId(),
                 article.getTitle(),
@@ -116,7 +124,8 @@ public class KeywordAlertService {
                 article.getSourceName(),
                 article.getPublishedAt(),
                 article.getSentiment(),
-                article.getSentimentScore() != null ? article.getSentimentScore() : 0.5
+                article.getSentimentScore() != null ? article.getSentimentScore() : 0.5,
+                taggedStocks
         );
     }
 }

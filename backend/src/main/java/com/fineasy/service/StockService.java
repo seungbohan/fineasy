@@ -370,6 +370,11 @@ public class StockService {
                 .orElseThrow(() -> new EntityNotFoundException("Stock", stockCode));
     }
 
+    public StockEntity getStockEntityById(Long id) {
+        return stockRepository.findById(id)
+                .orElseThrow(() -> new EntityNotFoundException("Stock", String.valueOf(id)));
+    }
+
     public PriceSummaryResponse getRecentPriceSummary(Long stockId, int days) {
         List<StockPriceEntity> prices = stockPriceRepository
                 .findLatestByStockId(stockId, PageRequest.of(0, days));

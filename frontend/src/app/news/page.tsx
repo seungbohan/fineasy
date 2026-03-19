@@ -203,7 +203,7 @@ export default function NewsPage() {
   const { watchlist } = useWatchlistStore();
 
   /* Track the time of initial fetch for new-news polling */
-  const [lastFetchTime] = useState(() => new Date().toISOString());
+  const [lastFetchTime, setLastFetchTime] = useState(() => new Date().toISOString());
 
   /* ── Infinite scroll for "all" tab ── */
   const {
@@ -212,7 +212,7 @@ export default function NewsPage() {
     fetchNextPage,
     hasNextPage,
     isFetchingNextPage,
-    refetch: refetchInfinite,
+    resetAndRefetch,
   } = useInfiniteNews({
     sentiment: sentiment === 'ALL' ? undefined : sentiment,
   });
@@ -223,7 +223,7 @@ export default function NewsPage() {
   );
 
   /* ── Watchlist filtered news ── */
-  const [watchlistPage, setWatchlistPage] = useState(1);
+  const [watchlistPage, setWatchlistPage] = useState(0);
   const { data: watchlistData, isLoading: isWatchlistLoading } =
     useWatchlistFilteredNews(
       newsTab === 'watchlist' ? watchlist : [],
@@ -257,9 +257,11 @@ export default function NewsPage() {
   };
 
   const handleNewNewsRefresh = useCallback(() => {
-    refetchInfinite();
-    resetNewCount();
-  }, [refetchInfinite, resetNewCount]);
+    // Reset infinite query cache and refetch from page 0
+    resetAndRefetch();
+    // Update lastFetchTime so new-news count resets to 0
+    setLastFetchTime(new Date().toISOString());
+  }, [resetAndRefetch]);
 
   const handleFetchNextPage = useCallback(() => {
     if (hasNextPage && !isFetchingNextPage) {
@@ -491,11 +493,11 @@ export default function NewsPage() {
           {newsTab === 'watchlist' && watchlistTotalPages > 1 && (
             <div className="flex items-center justify-center gap-3">
               <button
-                disabled={watchlistPage <= 1}
+                disabled={watchlistPage <= 0}
                 onClick={() => setWatchlistPage((p) => p - 1)}
                 className={cn(
                   'rounded-full px-4 py-2 text-[13px] font-semibold transition-colors',
-                  watchlistPage <= 1
+                  watchlistPage <= 0
                     ? 'bg-gray-50 text-gray-300 cursor-not-allowed'
                     : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                 )}
@@ -503,14 +505,14 @@ export default function NewsPage() {
                 이전
               </button>
               <span className="text-sm text-gray-500 tabular-nums">
-                {watchlistPage} / {watchlistTotalPages}
+                {watchlistPage + 1} / {watchlistTotalPages}
               </span>
               <button
-                disabled={watchlistPage >= watchlistTotalPages}
+                disabled={watchlistPage >= watchlistTotalPages - 1}
                 onClick={() => setWatchlistPage((p) => p + 1)}
                 className={cn(
                   'rounded-full px-4 py-2 text-[13px] font-semibold transition-colors',
-                  watchlistPage >= watchlistTotalPages
+                  watchlistPage >= watchlistTotalPages - 1
                     ? 'bg-gray-50 text-gray-300 cursor-not-allowed'
                     : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                 )}

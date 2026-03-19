@@ -1,6 +1,7 @@
 'use client';
 
-import { useQuery, useInfiniteQuery } from '@tanstack/react-query';
+import { useCallback } from 'react';
+import { useQuery, useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import {
   NewsArticle,
   NewsAnalysisResponse,
@@ -51,7 +52,7 @@ export function useNews(options?: {
   page?: number;
   size?: number;
 }) {
-  const { sentiment, stockCode, page = 1, size = 10 } = options || {};
+  const { sentiment, stockCode, page = 0, size = 10 } = options || {};
 
   return useQuery<{ items: NewsArticle[]; total: number }>({
     queryKey: ['news', sentiment, stockCode, page, size],
@@ -141,11 +142,13 @@ export function useInfiniteNews(options?: {
   size?: number;
 }) {
   const { sentiment, stockCode, size = 10 } = options || {};
+  const queryClient = useQueryClient();
 
-  return useInfiniteQuery<{ items: NewsArticle[]; total: number }>({
+  const query = useInfiniteQuery<{ items: NewsArticle[]; total: number }>({
     queryKey: ['news', 'infinite', sentiment, stockCode, size],
     queryFn: async ({ pageParam }) => {
       const params = new URLSearchParams();
+      // Backend uses 0-indexed pages
       params.set('page', String(pageParam));
       params.set('size', String(size));
       if (sentiment) params.set('sentiment', sentiment);
@@ -160,13 +163,22 @@ export function useInfiniteNews(options?: {
         total: res.totalElements,
       };
     },
-    initialPageParam: 1,
+    initialPageParam: 0,
     getNextPageParam: (lastPage, allPages) => {
       const totalFetched = allPages.reduce((sum, p) => sum + p.items.length, 0);
       if (totalFetched >= lastPage.total) return undefined;
-      return allPages.length + 1;
+      return allPages.length;
     },
   });
+
+  // Reset cache and refetch from page 0 (for "new news" refresh)
+  const resetAndRefetch = useCallback(() => {
+    queryClient.resetQueries({
+      queryKey: ['news', 'infinite', sentiment, stockCode, size],
+    });
+  }, [queryClient, sentiment, stockCode, size]);
+
+  return { ...query, resetAndRefetch };
 }
 
 /**
@@ -192,7 +204,7 @@ export function useNewNewsCount(since: string | null) {
  */
 export function useWatchlistFilteredNews(
   stockCodes: string[],
-  page = 1,
+  page = 0,
   size = 10
 ) {
   return useQuery<{ items: NewsArticle[]; total: number }>({

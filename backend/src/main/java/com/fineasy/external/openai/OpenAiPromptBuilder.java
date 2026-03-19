@@ -154,13 +154,24 @@ public class OpenAiPromptBuilder {
                - 부동산, 정치, 사회, 스포츠, 날씨 등 주식과 무관하면 false
             2. 주식 투자 관점 감성 분류 (POSITIVE/NEGATIVE/NEUTRAL)
             3. 감성 신뢰도 (0.0~1.0)
-            4. 관련 한국 상장 종목명 추출 (직접 언급 + 맥락상 관련 종목)
-               - 예: "HBM 수혜" → ["SK하이닉스", "삼성전자"]
-               - 예: "2차전지 급등" → ["LG에너지솔루션", "삼성SDI", "에코프로비엠"]
+            4. 관련 종목별 영향 분석 (stockImpacts 배열):
+               - name: 종목명 (한국 상장 종목명 또는 미국 티커)
+               - impact: 영향 유형
+                 - DIRECT: 뉴스의 주체 종목 (예: "삼성전자 실적 발표" → 삼성전자는 DIRECT)
+                 - INDIRECT: 간접 영향 (예: "반도체 업황 호조" → 반도체 종목들은 INDIRECT)
+                 - SUPPLY_CHAIN: 공급망 관계 (예: "NVIDIA 수요 급증" → SK하이닉스는 SUPPLY_CHAIN)
+                 - COMPETITOR: 경쟁 관계 (예: "TSMC 수율 문제" → 삼성전자 파운드리는 COMPETITOR)
+               - direction: 이 뉴스가 해당 종목에 미치는 영향 방향
+                 - POSITIVE: 호재
+                 - NEGATIVE: 악재
+                 - NEUTRAL: 중립
+               - relevance: 관련도 (0.0~1.0, DIRECT는 0.8+, INDIRECT/SUPPLY_CHAIN/COMPETITOR는 0.3~0.7)
                - 관련 종목이 없으면 빈 배열 []
+               - 예: "TSMC 수율 문제로 삼성 파운드리 반사이익 기대"
+                 → [{"name":"TSMC","impact":"DIRECT","direction":"NEGATIVE","relevance":0.9},
+                     {"name":"삼성전자","impact":"COMPETITOR","direction":"POSITIVE","relevance":0.7}]
             5. 제목이 영어(또는 한국어가 아닌 언어)인 경우, 자연스러운 한국어로 번역하여 titleKo에 포함
                - 한국어 제목이면 titleKo는 null
-               - 예: "Samsung Elec shares surge on AI chip demand" → "삼성전자, AI 칩 수요 급증에 주가 급등"
 
             응답 JSON 구조:
             {
@@ -170,7 +181,10 @@ public class OpenAiPromptBuilder {
                   "stockRelated": true,
                   "sentiment": "POSITIVE|NEGATIVE|NEUTRAL",
                   "score": 0.85,
-                  "stocks": ["삼성전자", "SK하이닉스"],
+                  "stockImpacts": [
+                    {"name": "SK하이닉스", "impact": "DIRECT", "direction": "POSITIVE", "relevance": 0.95},
+                    {"name": "삼성전자", "impact": "COMPETITOR", "direction": "NEGATIVE", "relevance": 0.6}
+                  ],
                   "titleKo": null
                 }
               ]

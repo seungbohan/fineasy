@@ -179,6 +179,19 @@ public class NewsService {
         }
     }
 
+    public List<String> getRecentNewsByStockCodes(List<String> stockCodes, int limit) {
+        try {
+            return newsArticleRepository
+                    .findByStockCodesIn(stockCodes, PageRequest.of(0, limit))
+                    .stream()
+                    .map(NewsArticleEntity::getTitle)
+                    .toList();
+        } catch (Exception e) {
+            log.warn("Failed to fetch news for related stock codes: {}", e.getMessage());
+            return List.of();
+        }
+    }
+
     public Double getAverageSentimentScore(String stockCode, int limit) {
         List<NewsArticleEntity> recentNews = newsArticleRepository
                 .findByStockCode(stockCode, PageRequest.of(0, limit));
@@ -489,6 +502,12 @@ public class NewsService {
     }
 
     private NewsArticleResponse toResponse(NewsArticleEntity article) {
+        List<NewsArticleResponse.TaggedStockInfo> taggedStocks = article.getTaggedStocks() != null
+                ? article.getTaggedStocks().stream()
+                    .map(s -> new NewsArticleResponse.TaggedStockInfo(s.getStockCode(), s.getStockName()))
+                    .toList()
+                : List.of();
+
         return new NewsArticleResponse(
                 article.getId(),
                 article.getTitle(),
@@ -497,7 +516,8 @@ public class NewsService {
                 article.getSourceName(),
                 article.getPublishedAt(),
                 article.getSentiment(),
-                article.getSentimentScore() != null ? article.getSentimentScore() : 0.5
+                article.getSentimentScore() != null ? article.getSentimentScore() : 0.5,
+                taggedStocks
         );
     }
 

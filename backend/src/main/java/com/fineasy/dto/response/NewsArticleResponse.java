@@ -3,6 +3,7 @@ package com.fineasy.dto.response;
 import com.fineasy.entity.Sentiment;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 public record NewsArticleResponse(
         long id,
@@ -12,6 +13,11 @@ public record NewsArticleResponse(
         String sourceName,
         LocalDateTime publishedAt,
         Sentiment sentiment,
-        double sentimentScore
+        double sentimentScore,
+        List<TaggedStockInfo> taggedStocks
 ) {
+    public record TaggedStockInfo(
+            String stockCode,
+            String stockName
+    ) {}
 }
