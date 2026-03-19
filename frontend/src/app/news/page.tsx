@@ -28,6 +28,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { SentimentBadge } from '@/components/shared/sentiment-badge';
 import { TermHighlighter } from '@/components/shared/term-highlighter';
 import { AlertKeywords } from '@/components/shared/alert-keywords';
+import { useKeywordMatchedNews } from '@/hooks/use-alert-keywords';
 import { NewsListSkeleton } from '@/components/shared/loading-skeleton';
 import {
   useInfiniteNews,
@@ -239,6 +240,9 @@ export default function NewsPage() {
     useNewNewsCount(lastFetchTime);
   const newCount = newNewsData?.count ?? 0;
 
+  /* ── Keyword matched news ── */
+  const { data: keywordNews } = useKeywordMatchedNews(isAuthenticated);
+
   /* ── Analysis sheet ── */
   const {
     data: analysisData,
@@ -274,8 +278,33 @@ export default function NewsPage() {
   const articles = isAllTab ? allArticles : watchlistArticles;
   const isLoading = isAllTab ? isInfiniteLoading : isWatchlistLoading;
 
-  const heroArticle = isAllTab && articles.length > 0 ? articles[0] : null;
-  const restArticles = isAllTab ? articles.slice(1) : articles;
+  /* Pick hero article by weighted score:
+     abs(sentimentScore - 0.5) * 2  →  strong sentiment (0~1)
+     taggedStocks count             →  market-wide impact
+     recency (hours ago)            →  fresher is better  */
+  const heroArticle = useMemo(() => {
+    if (!isAllTab || articles.length === 0) return null;
+    const now = Date.now();
+    let best = articles[0];
+    let bestScore = -1;
+    for (const a of articles.slice(0, 20)) {
+      const sentimentStrength = Math.abs((a.sentimentScore ?? 0.5) - 0.5) * 2;
+      const tagCount = a.taggedStocks?.length ?? 0;
+      const hoursAgo = Math.max(1, (now - new Date(a.publishedAt).getTime()) / 3_600_000);
+      const score = sentimentStrength * 3 + Math.min(tagCount, 5) * 0.5 + (1 / hoursAgo) * 2
+        + (a.isBreaking ? 10 : 0);
+      if (score > bestScore) {
+        bestScore = score;
+        best = a;
+      }
+    }
+    return best;
+  }, [isAllTab, articles]);
+
+  const restArticles = useMemo(() => {
+    if (!isAllTab) return articles;
+    return articles.filter((a) => a !== heroArticle);
+  }, [isAllTab, articles, heroArticle]);
 
   return (
     <div className="mx-auto max-w-screen-xl p-4 pb-8 md:p-6 md:pb-10 space-y-5">
@@ -524,8 +553,53 @@ export default function NewsPage() {
         </>
       )}
 
-      {/* Feature 9: Alert keyword management */}
-      {isAuthenticated && <AlertKeywords />}
+      {/* Feature 9: Alert keyword management + matched news */}
+      {isAuthenticated && (
+        <>
+          <AlertKeywords />
+          {keywordNews && keywordNews.length > 0 && (
+            <Card className="rounded-2xl border-0 bg-white shadow-none overflow-hidden">
+              <CardContent className="p-0">
+                <div className="flex items-center gap-2 px-4 pt-4 pb-2">
+                  <Bell className="h-4 w-4 text-[#3182F6]" />
+                  <h3 className="text-[14px] font-bold text-gray-900">
+                    키워드 매칭 뉴스
+                  </h3>
+                  <span className="text-[11px] text-gray-400">{keywordNews.length}건</span>
+                </div>
+                <div className="divide-y divide-gray-50">
+                  {keywordNews.slice(0, 10).map((article) => (
+                    <button
+                      key={article.id}
+                      type="button"
+                      className="group flex w-full items-stretch text-left transition-all hover:bg-gray-50/50"
+                      onClick={() => handleArticleClick(article.id)}
+                    >
+                      <div className={cn(
+                        'w-1 shrink-0',
+                        getSentimentAccentColor(article.sentiment)
+                      )} />
+                      <div className="flex flex-1 items-start gap-3 px-4 py-3">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold text-gray-900 leading-snug line-clamp-2">
+                            <TermHighlighter text={article.title} />
+                          </p>
+                          <div className="mt-1.5 flex items-center gap-2 flex-wrap">
+                            <SentimentBadge sentiment={article.sentiment} />
+                            <span className="text-[11px] text-gray-500">{article.sourceName}</span>
+                            <span className="text-[11px] text-gray-400">{formatRelativeTime(article.publishedAt)}</span>
+                          </div>
+                        </div>
+                        <Sparkles className="mt-1 h-4 w-4 shrink-0 text-gray-200 group-hover:text-[#3182F6]" />
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </>
+      )}
 
       {/* Analysis Sheet */}
       <Sheet open={sheetOpen} onOpenChange={handleSheetOpenChange}>
