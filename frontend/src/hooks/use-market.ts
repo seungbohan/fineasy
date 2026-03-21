@@ -11,6 +11,12 @@ interface MarketIndexApiResponse {
 
 interface MarketSummaryApiResponse {
   summary: string;
+  sentiment: string | null;
+  sentimentLabel: string | null;
+  overview: string | null;
+  macro: string | null;
+  news: string | null;
+  tip: string | null;
   generatedAt: string;
 }
 
@@ -26,13 +32,30 @@ export function useMarketIndices() {
   });
 }
 
+export interface MarketSummaryData {
+  summary: string;
+  sentiment: string | null;
+  sentimentLabel: string | null;
+  overview: string | null;
+  macro: string | null;
+  news: string | null;
+  tip: string | null;
+  updatedAt: string;
+}
+
 export function useMarketSummary() {
-  return useQuery<{ summary: string; updatedAt: string }>({
+  return useQuery<MarketSummaryData>({
     queryKey: ['market', 'summary'],
     queryFn: async () => {
       const res = await apiClient.get<MarketSummaryApiResponse>('/market/summary');
       return {
         summary: res.summary,
+        sentiment: res.sentiment,
+        sentimentLabel: res.sentimentLabel,
+        overview: res.overview,
+        macro: res.macro,
+        news: res.news,
+        tip: res.tip,
         updatedAt: res.generatedAt,
       };
     },

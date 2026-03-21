@@ -9,6 +9,12 @@ import {
   Plus,
   Sparkles,
   AlertCircle,
+  TrendingUp,
+  TrendingDown,
+  Minus,
+  BarChart3,
+  Newspaper,
+  Lightbulb,
 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -225,23 +231,80 @@ function MacroIndicatorsSection() {
 function MarketSummarySection() {
   const { data, isLoading } = useMarketSummary();
 
+  const sentimentConfig = {
+    POSITIVE: { icon: TrendingUp, color: 'text-red-500', bg: 'bg-red-50', label: '상승' },
+    NEGATIVE: { icon: TrendingDown, color: 'text-blue-500', bg: 'bg-blue-50', label: '하락' },
+    NEUTRAL: { icon: Minus, color: 'text-gray-500', bg: 'bg-gray-100', label: '보합' },
+  };
+
+  const sentiment = sentimentConfig[(data?.sentiment as keyof typeof sentimentConfig) || 'NEUTRAL'] || sentimentConfig.NEUTRAL;
+  const SentimentIcon = sentiment.icon;
+  const hasStructuredData = data?.overview || data?.macro || data?.news;
+
   return (
     <section aria-label="시장 요약">
       <Card className="rounded-2xl border-0 bg-gradient-to-br from-blue-50/40 via-white to-white shadow-none overflow-hidden relative">
         <CardContent className="p-5 relative z-10">
-          <div className="mb-3 flex items-center gap-2">
-            <Sparkles className="h-4 w-4 text-[#3182F6] animate-subtle-pulse" />
-            <span className="text-[15px] font-bold text-gray-900">
-              오늘의 시장 요약
-            </span>
-            <span className="rounded-full bg-blue-50 px-2.5 py-0.5 text-[11px] font-semibold ai-shimmer">
-              AI
-            </span>
+          <div className="mb-4 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-[#3182F6] animate-subtle-pulse" />
+              <span className="text-[15px] font-bold text-gray-900">
+                오늘의 시장 요약
+              </span>
+              <span className="rounded-full bg-blue-50 px-2.5 py-0.5 text-[11px] font-semibold ai-shimmer">
+                AI
+              </span>
+            </div>
+            {!isLoading && data?.sentimentLabel && (
+              <div className={cn('flex items-center gap-1.5 rounded-full px-3 py-1', sentiment.bg)}>
+                <SentimentIcon className={cn('h-3.5 w-3.5', sentiment.color)} />
+                <span className={cn('text-xs font-semibold', sentiment.color)}>
+                  {data.sentimentLabel}
+                </span>
+              </div>
+            )}
           </div>
           {isLoading ? (
-            <div className="space-y-2">
+            <div className="space-y-3">
+              <Skeleton className="h-4 w-full" />
+              <Skeleton className="h-4 w-5/6" />
               <Skeleton className="h-4 w-full" />
               <Skeleton className="h-4 w-3/4" />
+            </div>
+          ) : hasStructuredData ? (
+            <div className="space-y-3">
+              {data?.overview && (
+                <div className="flex gap-2.5">
+                  <SentimentIcon className={cn('h-4 w-4 mt-0.5 shrink-0', sentiment.color)} />
+                  <p className="text-sm leading-relaxed text-gray-800 font-medium">
+                    {data.overview}
+                  </p>
+                </div>
+              )}
+              {data?.macro && (
+                <div className="flex gap-2.5">
+                  <BarChart3 className="h-4 w-4 mt-0.5 shrink-0 text-amber-500" />
+                  <p className="text-sm leading-relaxed text-gray-600">
+                    {data.macro}
+                  </p>
+                </div>
+              )}
+              {data?.news && (
+                <div className="flex gap-2.5">
+                  <Newspaper className="h-4 w-4 mt-0.5 shrink-0 text-purple-500" />
+                  <p className="text-sm leading-relaxed text-gray-600">
+                    {data.news}
+                  </p>
+                </div>
+              )}
+              {data?.tip && (
+                <div className="mt-2 flex gap-2.5 rounded-xl bg-amber-50/80 p-3">
+                  <Lightbulb className="h-4 w-4 mt-0.5 shrink-0 text-amber-500" />
+                  <p className="text-[13px] leading-relaxed text-amber-800 font-medium">
+                    {data.tip}
+                  </p>
+                </div>
+              )}
             </div>
           ) : (
             <p className="text-sm leading-relaxed text-gray-700">
@@ -468,27 +531,29 @@ function WatchlistSection() {
                 >
                   <Link
                     href={`/stocks/${stock.stockCode}`}
-                    className="flex-1 min-w-0"
+                    className="flex-1 min-w-0 flex items-center"
                   >
-                    <p className="text-sm font-medium text-gray-900 truncate">
-                      {stock.stockName}
-                    </p>
-                    <p className="text-[11px] text-gray-400">{stock.stockCode}</p>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-900 truncate">
+                        {stock.stockName}
+                      </p>
+                      <p className="text-[11px] text-gray-400">{stock.stockCode}</p>
+                    </div>
+                    <span className="w-24 text-right text-sm tabular-nums text-gray-900">
+                      {stock.currency === 'USD'
+                        ? formatPrice(stock.currentPrice, 'USD')
+                        : formatPrice(stock.currentPrice)
+                      }
+                    </span>
+                    <span
+                      className={cn(
+                        'w-20 text-right text-sm font-medium tabular-nums',
+                        getPriceColorClass(stock.changeRate)
+                      )}
+                    >
+                      {formatChangeRate(stock.changeRate)}
+                    </span>
                   </Link>
-                  <span className="w-24 text-right text-sm tabular-nums text-gray-900">
-                    {stock.currency === 'USD'
-                      ? formatPrice(stock.currentPrice, 'USD')
-                      : formatPrice(stock.currentPrice)
-                    }
-                  </span>
-                  <span
-                    className={cn(
-                      'w-20 text-right text-sm font-medium tabular-nums',
-                      getPriceColorClass(stock.changeRate)
-                    )}
-                  >
-                    {formatChangeRate(stock.changeRate)}
-                  </span>
                   <div className="w-8 flex justify-end">
                     <button
                       onClick={async (e) => {

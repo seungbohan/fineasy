@@ -87,16 +87,25 @@ public class MarketService {
 
     public MarketSummaryResponse getMarketSummary() {
         try {
-            String aiSummary = aiMarketSummaryService.generateMarketSummary();
-            if (aiSummary != null) {
-                return new MarketSummaryResponse(aiSummary, Instant.now());
+            AiMarketSummaryService.MarketSummaryData aiData = aiMarketSummaryService.generateMarketSummary();
+            if (aiData != null) {
+                return new MarketSummaryResponse(
+                        aiData.overview(),
+                        aiData.sentiment(),
+                        aiData.sentimentLabel(),
+                        aiData.overview(),
+                        aiData.macro(),
+                        aiData.news(),
+                        aiData.tip(),
+                        Instant.now()
+                );
             }
         } catch (Exception e) {
             log.warn("AI market summary unavailable: {}", e.getMessage());
         }
 
         String summary = marketDataProvider.getMarketSummary();
-        return new MarketSummaryResponse(summary, Instant.now());
+        return new MarketSummaryResponse(summary, null, null, null, null, null, null, Instant.now());
     }
 
     public StockRankingResponse getStockRanking(String type, int size, String region) {

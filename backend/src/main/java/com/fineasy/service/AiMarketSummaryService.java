@@ -27,7 +27,7 @@ public class AiMarketSummaryService {
 
     private static final Duration AI_SUMMARY_CACHE_TTL = Duration.ofHours(4);
 
-    private static final int MAX_TOKENS_MARKET_SUMMARY = 800;
+    private static final int MAX_TOKENS_MARKET_SUMMARY = 1200;
 
     private static final List<String> KEY_MACRO_CODES = List.of(
             "KR_BASE_RATE", "US_FED_FUNDS_RATE", "USD_KRW", "US_10Y_TREASURY",
@@ -45,8 +45,18 @@ public class AiMarketSummaryService {
     private final OpenAiClient openAiClient;
     private final OpenAiPromptBuilder promptBuilder;
 
-    private volatile String cachedAiSummary;
+    private volatile MarketSummaryData cachedAiSummary;
     private volatile Instant cachedAt;
+
+    public record MarketSummaryData(
+            String summary,
+            String sentiment,
+            String sentimentLabel,
+            String overview,
+            String macro,
+            String news,
+            String tip
+    ) {}
 
     public AiMarketSummaryService(MarketDataProvider marketDataProvider,
                                    MacroIndicatorRepository macroIndicatorRepository,
@@ -64,7 +74,7 @@ public class AiMarketSummaryService {
         this.promptBuilder = promptBuilder;
     }
 
-    public String generateMarketSummary() {
+    public MarketSummaryData generateMarketSummary() {
         if (!isAiAvailable()) {
             return null;
         }
@@ -84,13 +94,13 @@ public class AiMarketSummaryService {
             String userPrompt = promptBuilder.buildMarketSummaryPrompt(indices, macroIndicators, newsTitles);
 
             String aiResponse = openAiClient.chat(systemPrompt, userPrompt, MAX_TOKENS_MARKET_SUMMARY);
-            String summary = parseMarketSummaryResponse(aiResponse);
+            MarketSummaryData data = parseMarketSummaryResponse(aiResponse);
 
-            if (summary != null && !summary.isBlank()) {
-                cachedAiSummary = summary;
+            if (data != null) {
+                cachedAiSummary = data;
                 cachedAt = Instant.now();
                 log.info("AI market summary generated and cached successfully");
-                return summary;
+                return data;
             }
         } catch (Exception e) {
             log.warn("Failed to generate AI market summary: {}", e.getMessage());
@@ -107,10 +117,22 @@ public class AiMarketSummaryService {
                 && !openAiConfig.getApiKey().isBlank();
     }
 
-    private String parseMarketSummaryResponse(String aiResponse) {
+    private MarketSummaryData parseMarketSummaryResponse(String aiResponse) {
         try {
             JsonNode root = objectMapper.readTree(aiResponse);
-            return root.path("summary").asText(null);
+            String overview = root.path("overview").asText(null);
+            if (overview == null || overview.isBlank()) {
+                return null;
+            }
+            return new MarketSummaryData(
+                    overview,
+                    root.path("sentiment").asText("NEUTRAL"),
+                    root.path("sentimentLabel").asText("보합세"),
+                    overview,
+                    root.path("macro").asText(null),
+                    root.path("news").asText(null),
+                    root.path("tip").asText(null)
+            );
         } catch (Exception e) {
             log.error("Failed to parse AI market summary response: {}", aiResponse, e);
             return null;
