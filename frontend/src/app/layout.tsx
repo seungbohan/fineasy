@@ -108,13 +108,8 @@ export const metadata: Metadata = {
     },
   },
   verification: {
-    // TODO: Add actual verification codes
-    // google: 'google-site-verification-code',
-    // other: { 'naver-site-verification': 'naver-verification-code' },
-  },
-  other: {
-    // Naver specific meta tags
-    'naver-site-verification': '', // TODO: Add Naver verification code
+    google: 'google57ae7b5280904b67',
+    other: { 'naver-site-verification': 'naver0c71701f7d1796e9283cf9dbb6ded66a' },
   },
 };
 
@@ -129,6 +124,20 @@ export default function RootLayout({
         <WebsiteJsonLd />
         <OrganizationJsonLd />
         <FinancialServiceJsonLd />
+        <script
+          async
+          src={`https://www.googletagmanager.com/gtag/js?id=G-NLYGDP45K8`}
+        />
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              window.dataLayer = window.dataLayer || [];
+              function gtag(){dataLayer.push(arguments);}
+              gtag('js', new Date());
+              gtag('config', 'G-NLYGDP45K8');
+            `,
+          }}
+        />
         <script
           async
           src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-1140877243889064"
