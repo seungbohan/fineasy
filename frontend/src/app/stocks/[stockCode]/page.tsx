@@ -3,7 +3,7 @@ import { createPageMetadata, SITE_URL } from '@/lib/seo';
 import { BreadcrumbJsonLd } from '@/components/seo/json-ld';
 import StockDetailPage from './stock-detail-client';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1';
+const API_URL = process.env.INTERNAL_API_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1';
 
 interface Props {
   params: Promise<{ stockCode: string }>;
