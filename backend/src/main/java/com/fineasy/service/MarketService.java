@@ -12,6 +12,7 @@ import com.fineasy.repository.StockPriceRepository;
 import com.fineasy.repository.StockRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -85,11 +86,20 @@ public class MarketService {
         return response;
     }
 
+    private static final String MARKET_SUMMARY_CACHE_KEY = "market:summary";
+    private static final Duration MARKET_SUMMARY_CACHE_TTL = Duration.ofHours(1);
+
     public MarketSummaryResponse getMarketSummary() {
+        MarketSummaryResponse cached = redisCacheHelper.getFromCache(MARKET_SUMMARY_CACHE_KEY, MarketSummaryResponse.class);
+        if (cached != null) {
+            return cached;
+        }
+
+        MarketSummaryResponse response;
         try {
             AiMarketSummaryService.MarketSummaryData aiData = aiMarketSummaryService.generateMarketSummary();
             if (aiData != null) {
-                return new MarketSummaryResponse(
+                response = new MarketSummaryResponse(
                         aiData.overview(),
                         aiData.sentiment(),
                         aiData.sentimentLabel(),
@@ -99,6 +109,8 @@ public class MarketService {
                         aiData.tip(),
                         Instant.now()
                 );
+                redisCacheHelper.putToCache(MARKET_SUMMARY_CACHE_KEY, response, MARKET_SUMMARY_CACHE_TTL);
+                return response;
             }
         } catch (Exception e) {
             log.warn("AI market summary unavailable: {}", e.getMessage());
@@ -108,6 +120,7 @@ public class MarketService {
         return new MarketSummaryResponse(summary, null, null, null, null, null, null, Instant.now());
     }
 
+    @Cacheable(value = "market-ranking", key = "#type + ':' + #size + ':' + #region", unless = "#result == null")
     public StockRankingResponse getStockRanking(String type, int size, String region) {
         int limitedSize = Math.min(size, 30);
 

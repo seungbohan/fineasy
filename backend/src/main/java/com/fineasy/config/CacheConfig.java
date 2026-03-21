@@ -26,12 +26,13 @@ public class CacheConfig implements CachingConfigurer {
 
     private static final Logger log = LoggerFactory.getLogger(CacheConfig.class);
 
-    private static final Duration BOK_TERM_CACHE_TTL = Duration.ofHours(24);
+    private static final Duration STATIC_CACHE_TTL = Duration.ofHours(24);
     private static final Duration AI_CACHE_TTL = Duration.ofHours(6);
-    private static final Duration MACRO_CACHE_TTL = Duration.ofHours(1);
-    private static final Duration POPULAR_STOCKS_CACHE_TTL = Duration.ofMinutes(30);
+    private static final Duration LONG_CACHE_TTL = Duration.ofHours(1);
+    private static final Duration MEDIUM_CACHE_TTL = Duration.ofMinutes(30);
     private static final Duration SHORT_CACHE_TTL = Duration.ofMinutes(10);
-    private static final Duration ALERT_CACHE_TTL = Duration.ofMinutes(5);
+    private static final Duration VERY_SHORT_CACHE_TTL = Duration.ofMinutes(5);
+    private static final Duration REALTIME_CACHE_TTL = Duration.ofMinutes(1);
 
     @Bean
     public CacheManager cacheManager(RedisConnectionFactory connectionFactory) {
@@ -43,23 +44,44 @@ public class CacheConfig implements CachingConfigurer {
                 .entryTtl(AI_CACHE_TTL)
                 .disableCachingNullValues();
 
-        RedisCacheConfiguration bokTermConfig = defaultConfig.entryTtl(BOK_TERM_CACHE_TTL);
-        RedisCacheConfiguration macroConfig = defaultConfig.entryTtl(MACRO_CACHE_TTL);
-        RedisCacheConfiguration popularStocksConfig = defaultConfig.entryTtl(POPULAR_STOCKS_CACHE_TTL);
+        RedisCacheConfiguration staticConfig = defaultConfig.entryTtl(STATIC_CACHE_TTL);
+        RedisCacheConfiguration longConfig = defaultConfig.entryTtl(LONG_CACHE_TTL);
+        RedisCacheConfiguration mediumConfig = defaultConfig.entryTtl(MEDIUM_CACHE_TTL);
         RedisCacheConfiguration shortConfig = defaultConfig.entryTtl(SHORT_CACHE_TTL);
-        RedisCacheConfiguration alertConfig = defaultConfig.entryTtl(ALERT_CACHE_TTL);
+        RedisCacheConfiguration veryShortConfig = defaultConfig.entryTtl(VERY_SHORT_CACHE_TTL);
+        RedisCacheConfiguration realtimeConfig = defaultConfig.entryTtl(REALTIME_CACHE_TTL);
 
         Map<String, RedisCacheConfiguration> cacheConfigs = Map.ofEntries(
-                Map.entry("bok-term-explanation", bokTermConfig),
+                // AI generated content (6h)
                 Map.entry("analysis-report", defaultConfig),
                 Map.entry("analysis-prediction", defaultConfig),
-                Map.entry("macro-indicators", macroConfig),
-                Map.entry("popular-stocks", popularStocksConfig),
-                Map.entry("crypto-prices", popularStocksConfig),
-                Map.entry("market-risk-summary", popularStocksConfig),
+                // Static data (24h)
+                Map.entry("bok-term-explanation", staticConfig),
+                Map.entry("terms-all", staticConfig),
+                Map.entry("terms-categories", staticConfig),
+                Map.entry("terms-by-category", staticConfig),
+                Map.entry("terms-detail", staticConfig),
+                // Long cache (1h)
+                Map.entry("macro-indicators", longConfig),
+                Map.entry("stock-financials", longConfig),
+                Map.entry("stock-fundamentals", longConfig),
+                Map.entry("sector-comparison", longConfig),
+                Map.entry("market-summary", longConfig),
+                // Medium cache (30m)
+                Map.entry("popular-stocks", mediumConfig),
+                Map.entry("crypto-prices", mediumConfig),
+                Map.entry("market-risk-summary", mediumConfig),
+                // Short cache (10m)
                 Map.entry("macro-indicators-category", shortConfig),
                 Map.entry("global-events", shortConfig),
-                Map.entry("global-events-alerts", alertConfig)
+                Map.entry("stock-info", shortConfig),
+                Map.entry("stock-chart", shortConfig),
+                Map.entry("market-ranking", shortConfig),
+                // Very short cache (5m)
+                Map.entry("global-events-alerts", veryShortConfig),
+                Map.entry("news-list", veryShortConfig),
+                // Realtime cache (1m)
+                Map.entry("stock-price", realtimeConfig)
         );
 
         return RedisCacheManager.builder(connectionFactory)

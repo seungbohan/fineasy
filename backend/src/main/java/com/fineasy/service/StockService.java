@@ -76,11 +76,13 @@ public class StockService {
                 .toList();
     }
 
+    @Cacheable(value = "stock-info", key = "#stockCode", unless = "#result == null")
     public StockResponse getStockInfo(String stockCode) {
         StockEntity stock = getStockEntityByCode(stockCode);
         return toStockResponse(stock);
     }
 
+    @Cacheable(value = "stock-price", key = "#stockCode", unless = "#result == null")
     public StockPriceResponse getStockPrice(String stockCode) {
         StockEntity stock = getStockEntityByCode(stockCode);
 
@@ -133,6 +135,7 @@ public class StockService {
         );
     }
 
+    @Cacheable(value = "stock-chart", key = "#stockCode + ':' + #period + ':' + #type", unless = "#result == null")
     public StockChartResponse getChartData(String stockCode, String period, String type) {
         StockEntity stock = getStockEntityByCode(stockCode);
 
@@ -196,6 +199,7 @@ public class StockService {
         return candles;
     }
 
+    @Cacheable(value = "stock-financials", key = "#stockCode", unless = "#result == null")
     public StockFinancialsResponse getFinancials(String stockCode) {
         StockEntity stock = getStockEntityByCode(stockCode);
         StockFinancialsResponse response = stockDataProvider.getFinancials(stockCode);
@@ -214,12 +218,14 @@ public class StockService {
         );
     }
 
+    @Cacheable(value = "stock-fundamentals", key = "#stockCode + ':dart'", unless = "#result == null")
     @Transactional
     public DartFundamentalsResponse getDartFundamentals(String stockCode) {
         return callDartService(stockCode, "DART fundamentals",
                 (code, name) -> dartFinancialService.getFundamentals(code, name));
     }
 
+    @Cacheable(value = "stock-fundamentals", key = "#stockCode + ':multi'", unless = "#result == null")
     @Transactional
     public MultiYearFundamentalsResponse getMultiYearFundamentals(String stockCode) {
         return callDartService(stockCode, "multi-year DART",
@@ -248,6 +254,7 @@ public class StockService {
         }
     }
 
+    @Cacheable(value = "sector-comparison", key = "#stockCode", unless = "#result == null")
     public SectorComparisonResponse getSectorComparison(String stockCode) {
         StockEntity stock = getStockEntityByCode(stockCode);
 

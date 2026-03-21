@@ -7,6 +7,7 @@ import com.fineasy.entity.TermCategoryEntity;
 import com.fineasy.exception.EntityNotFoundException;
 import com.fineasy.repository.FinancialTermRepository;
 import com.fineasy.repository.TermCategoryRepository;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -26,6 +27,7 @@ public class TermService {
         this.categoryRepository = categoryRepository;
     }
 
+    @Cacheable(value = "terms-all", unless = "#result == null || #result.isEmpty()")
     public List<FinancialTermResponse> getAllTerms() {
         return termRepository.findAllOrderByName().stream()
                 .map(this::toResponse)
@@ -38,12 +40,14 @@ public class TermService {
                 .toList();
     }
 
+    @Cacheable(value = "terms-detail", key = "#termId", unless = "#result == null")
     public FinancialTermResponse getTermById(long termId) {
         FinancialTermEntity term = termRepository.findById(termId)
                 .orElseThrow(() -> new EntityNotFoundException("FinancialTerm", termId));
         return toDetailedResponse(term);
     }
 
+    @Cacheable(value = "terms-categories", unless = "#result == null || #result.isEmpty()")
     public List<TermCategoryResponse> getCategories() {
         return categoryRepository.findAllByOrderByDisplayOrderAsc().stream()
                 .map(c -> new TermCategoryResponse(
@@ -53,6 +57,7 @@ public class TermService {
                 .toList();
     }
 
+    @Cacheable(value = "terms-by-category", key = "#categoryId", unless = "#result == null || #result.isEmpty()")
     public List<FinancialTermResponse> getTermsByCategory(long categoryId) {
         categoryRepository.findById(categoryId)
                 .orElseThrow(() -> new EntityNotFoundException("TermCategory", categoryId));
