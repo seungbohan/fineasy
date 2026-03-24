@@ -9,14 +9,23 @@ interface Props {
   params: Promise<{ stockCode: string }>;
 }
 
-async function fetchStockName(stockCode: string): Promise<string | null> {
+interface StockData {
+  stockName: string;
+  stockCode: string;
+  currentPrice?: number;
+  changeRate?: number;
+  marketCap?: number;
+  volume?: number;
+}
+
+async function fetchStock(stockCode: string): Promise<StockData | null> {
   try {
     const res = await fetch(`${API_URL}/stocks/${stockCode}`, {
       next: { revalidate: 86400 },
     });
     if (!res.ok) return null;
     const json = await res.json();
-    return json.data?.stockName ?? null;
+    return json.data ?? null;
   } catch {
     return null;
   }
@@ -24,7 +33,8 @@ async function fetchStockName(stockCode: string): Promise<string | null> {
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { stockCode } = await params;
-  const stockName = await fetchStockName(stockCode);
+  const stock = await fetchStock(stockCode);
+  const stockName = stock?.stockName ?? null;
 
   const isKorean = /^\d{6}$/.test(stockCode);
   const displayName = stockName ? `${stockName}(${stockCode})` : stockCode;
@@ -46,8 +56,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
 export default async function Page({ params }: Props) {
   const { stockCode } = await params;
-  const stockName = await fetchStockName(stockCode);
-  const displayName = stockName || stockCode;
+  const stock = await fetchStock(stockCode);
+  const displayName = stock?.stockName || stockCode;
 
   return (
     <>
@@ -58,6 +68,14 @@ export default async function Page({ params }: Props) {
           { name: displayName, url: `${SITE_URL}/stocks/${stockCode}` },
         ]}
       />
+      {stock && (
+        <section className="sr-only" aria-label="종목 정보">
+          <h1>{stock.stockName} ({stock.stockCode})</h1>
+          <p>{stock.stockName}의 실시간 주가, AI 종목 분석, 재무제표, 관련 뉴스를 확인하세요.</p>
+          {stock.currentPrice != null && <p>현재가: {stock.currentPrice.toLocaleString()}원</p>}
+          {stock.changeRate != null && <p>등락률: {stock.changeRate}%</p>}
+        </section>
+      )}
       <StockDetailPage params={params} />
     </>
   );

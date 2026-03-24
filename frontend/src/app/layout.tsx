@@ -16,6 +16,7 @@ import {
   SITE_LOCALE,
   DEFAULT_OG_IMAGE,
 } from '@/lib/seo';
+import { AdSenseScript } from '@/components/adsense-script';
 
 const notoSansKR = Noto_Sans_KR({
   variable: '--font-noto-sans-kr',
@@ -138,15 +139,11 @@ export default function RootLayout({
             `,
           }}
         />
-        <script
-          async
-          src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-1140877243889064"
-          crossOrigin="anonymous"
-        />
       </head>
       <body
         className={`${notoSansKR.variable} ${geistMono.variable} antialiased`}
       >
+        <AdSenseScript />
         <Providers>
           <div className="flex min-h-screen flex-col">
             <Header />
