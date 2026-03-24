@@ -19,6 +19,8 @@ import {
   Megaphone,
   ChevronLeft,
   ChevronRight,
+  MessageSquare,
+  ShieldAlert,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -32,6 +34,8 @@ import {
   SheetFooter,
 } from '@/components/ui/sheet';
 import { SentimentBadge } from '@/components/shared/sentiment-badge';
+import { PostWriteForm } from '@/components/community/post-write-form';
+import { PostList } from '@/components/community/post-list';
 import { StockChart } from '@/components/stocks/stock-chart';
 import { CompanyAnalysisCard } from '@/components/stocks/company-analysis-card';
 import { FundamentalAnalysis } from '@/components/stocks/fundamental-analysis';
@@ -102,8 +106,8 @@ export default function StockDetailPage({
   const [sheetOpen, setSheetOpen] = useState(false);
   const { data: analysisData, isLoading: isAnalysisLoading, isError: isAnalysisError } = useNewsAnalysis(selectedNewsId);
 
-  /** Active tab: 'info' (default), 'disclosure', or 'timeline' */
-  const [activeTab, setActiveTab] = useState<'info' | 'disclosure' | 'timeline'>('info');
+  /** Active tab: 'info' (default), 'disclosure', 'timeline', or 'community' */
+  const [activeTab, setActiveTab] = useState<'info' | 'disclosure' | 'timeline' | 'community'>('info');
 
   const watched = isWatched(stockCode);
   const isDomestic = isDomesticStock(stockCode);
@@ -239,6 +243,17 @@ export default function StockDetailPage({
             <Clock className="h-3.5 w-3.5" />
             타임라인
           </button>
+          <button
+            onClick={() => setActiveTab('community')}
+            className={`flex-1 rounded-lg py-2 text-[13px] font-semibold transition-all flex items-center justify-center gap-1.5 ${
+              activeTab === 'community'
+                ? 'bg-white text-gray-900 shadow-sm'
+                : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            <MessageSquare className="h-3.5 w-3.5" />
+            토론
+          </button>
         </div>
       </div>
 
@@ -260,6 +275,8 @@ export default function StockDetailPage({
         />
       ) : activeTab === 'disclosure' ? (
         <DisclosureTab stockCode={stockCode} isDomestic={isDomestic} />
+      ) : activeTab === 'community' ? (
+        <CommunityTab stockCode={stockCode} />
       ) : (
         <TimelineTab stockCode={stockCode} isDomestic={isDomestic} />
       )}
@@ -1044,6 +1061,30 @@ function OverseasDisclosureList({ stockCode }: { stockCode: string }) {
           </a>
         ))}
       </div>
+    </div>
+  );
+}
+
+/* ────────────────────────────────────────────────────────
+ * CommunityTab - Stock discussion board
+ * ──────────────────────────────────────────────────────── */
+
+function CommunityTab({ stockCode }: { stockCode: string }) {
+  return (
+    <div className="space-y-3 p-4">
+      {/* Disclaimer banner */}
+      <div className="flex items-start gap-2.5 rounded-2xl bg-amber-50/70 px-4 py-3">
+        <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
+        <p className="text-[12px] text-amber-700 leading-relaxed">
+          이 공간은 투자자 의견 공유 목적이며, 투자 권유가 아닙니다.
+        </p>
+      </div>
+
+      {/* Post write form */}
+      <PostWriteForm stockCode={stockCode} />
+
+      {/* Post list */}
+      <PostList stockCode={stockCode} />
     </div>
   );
 }

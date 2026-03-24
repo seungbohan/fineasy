@@ -343,3 +343,47 @@ export interface AlertKeywordsResponse {
   keywords: AlertKeyword[];
   maxCount: number;
 }
+
+/** Community post */
+export interface Post {
+  id: number;
+  content: string;
+  authorNickname: string;
+  likeCount: number;
+  dislikeCount: number;
+  commentCount: number;
+  myReaction: 'LIKE' | 'DISLIKE' | null;
+  isDeleted: boolean;
+  createdAt: string;
+}
+
+/** Post list response (cursor-based pagination) */
+export interface PostListData {
+  posts: Post[];
+  nextCursor: number | null;
+  hasNext: boolean;
+}
+
+/** Reaction response */
+export interface ReactionResponse {
+  postId: number;
+  likeCount: number;
+  dislikeCount: number;
+  myReaction: 'LIKE' | 'DISLIKE' | null;
+}
+
+/** Comment on a post */
+export interface Comment {
+  id: number;
+  content: string;
+  authorNickname: string;
+  isDeleted: boolean;
+  createdAt: string;
+}
+
+/** Comment list response (cursor-based pagination) */
+export interface CommentListData {
+  comments: Comment[];
+  nextCursor: number | null;
+  hasNext: boolean;
+}

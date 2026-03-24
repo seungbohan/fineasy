@@ -6,6 +6,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.MediaType;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
@@ -49,6 +50,13 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/v1/auth/**").permitAll()
                         .requestMatchers("/api/v1/market/**").permitAll()
+                        // Stock posts: POST/DELETE require auth, GET is public
+                        .requestMatchers(HttpMethod.POST, "/api/v1/stocks/*/posts").authenticated()
+                        .requestMatchers(HttpMethod.DELETE, "/api/v1/stocks/*/posts/*").authenticated()
+                        .requestMatchers(HttpMethod.POST, "/api/v1/posts/*/reactions").authenticated()
+                        .requestMatchers(HttpMethod.POST, "/api/v1/posts/*/comments").authenticated()
+                        .requestMatchers(HttpMethod.DELETE, "/api/v1/posts/*/comments/*").authenticated()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/posts/*/comments").permitAll()
                         .requestMatchers("/api/v1/stocks/**").permitAll()
                         .requestMatchers("/api/v1/news/**").permitAll()
                         .requestMatchers("/api/v1/terms/**").permitAll()
