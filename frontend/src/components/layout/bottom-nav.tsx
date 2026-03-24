@@ -6,7 +6,6 @@ import { usePathname } from 'next/navigation';
 import {
   Home,
   TrendingUp,
-  BrainCircuit,
   MoreHorizontal,
   BookOpen,
   GraduationCap,
@@ -25,7 +24,6 @@ const PRIMARY_ITEMS = [
 ];
 
 const MORE_ITEMS = [
-  { href: '/analysis', label: 'AI 분석', icon: BrainCircuit },
   { href: '/macro', label: '거시경제', icon: LineChart },
   { href: '/crypto', label: '암호화폐', icon: Bitcoin },
   { href: '/dictionary', label: '용어사전', icon: BookOpen },

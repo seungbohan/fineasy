@@ -112,7 +112,6 @@ export function Header() {
             { href: '/news', label: '뉴스' },
             { href: '/global-events', label: '글로벌' },
             { href: '/stocks', label: '종목' },
-            { href: '/analysis', label: 'AI 분석' },
             { href: '/macro', label: '거시경제' },
             { href: '/crypto', label: '암호화폐' },
             { href: '/dictionary', label: '용어사전' },

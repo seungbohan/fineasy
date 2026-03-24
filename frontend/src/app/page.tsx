@@ -312,10 +312,10 @@ function MarketSummarySection() {
             </p>
           )}
           <Link
-            href="/analysis"
+            href="/stocks"
             className="mt-4 inline-flex items-center text-[13px] font-semibold text-[#3182F6] hover:underline"
           >
-            자세한 분석 보기
+            종목 분석 보기
             <ChevronRight className="ml-0.5 h-3 w-3" />
           </Link>
         </CardContent>
