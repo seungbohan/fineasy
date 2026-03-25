@@ -41,11 +41,7 @@ export function PostCard({ post, stockCode, onOpenComments }: PostCardProps) {
   };
 
   if (post.isDeleted) {
-    return (
-      <div className="rounded-2xl bg-white p-4">
-        <p className="text-sm text-gray-400 italic">삭제된 게시글입니다</p>
-      </div>
-    );
+    return null;
   }
 
   return (

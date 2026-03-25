@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { useAuthStore } from '@/stores/auth-store';
 import { useCreatePost } from '@/hooks/use-community';
 
-const MIN_LENGTH = 10;
+const MIN_LENGTH = 1;
 const MAX_LENGTH = 500;
 
 interface PostWriteFormProps {

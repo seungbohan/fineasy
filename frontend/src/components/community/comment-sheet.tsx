@@ -126,47 +126,39 @@ export function CommentSheet({
             </div>
           ) : (
             <>
-              {comments.map((comment) => (
+              {comments.filter((c) => !c.isDeleted).map((comment) => (
                 <div
                   key={comment.id}
                   className="rounded-xl bg-gray-50 p-3"
                 >
-                  {comment.isDeleted ? (
-                    <p className="text-sm text-gray-400 italic">
-                      삭제된 댓글입니다
-                    </p>
-                  ) : (
-                    <>
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <div className="flex h-6 w-6 items-center justify-center rounded-full bg-gray-200">
-                            <span className="text-[10px] font-bold text-gray-500">
-                              {comment.authorNickname.charAt(0)}
-                            </span>
-                          </div>
-                          <span className="text-[12px] font-semibold text-gray-700">
-                            {comment.authorNickname}
-                          </span>
-                          <span className="text-[11px] text-gray-400">
-                            {formatRelativeTime(comment.createdAt)}
-                          </span>
-                        </div>
-                        {user?.nickname === comment.authorNickname && (
-                          <button
-                            onClick={() => handleDelete(comment.id)}
-                            disabled={deleteComment.isPending}
-                            className="rounded-lg p-1 text-gray-300 transition-colors hover:text-gray-500"
-                            aria-label="댓글 삭제"
-                          >
-                            <Trash2 className="h-3 w-3" />
-                          </button>
-                        )}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="flex h-6 w-6 items-center justify-center rounded-full bg-gray-200">
+                        <span className="text-[10px] font-bold text-gray-500">
+                          {comment.authorNickname.charAt(0)}
+                        </span>
                       </div>
-                      <p className="mt-1.5 text-sm text-gray-700 leading-relaxed whitespace-pre-wrap break-words">
-                        {comment.content}
-                      </p>
-                    </>
-                  )}
+                      <span className="text-[12px] font-semibold text-gray-700">
+                        {comment.authorNickname}
+                      </span>
+                      <span className="text-[11px] text-gray-400">
+                        {formatRelativeTime(comment.createdAt)}
+                      </span>
+                    </div>
+                    {user?.nickname === comment.authorNickname && (
+                      <button
+                        onClick={() => handleDelete(comment.id)}
+                        disabled={deleteComment.isPending}
+                        className="rounded-lg p-1 text-gray-300 transition-colors hover:text-gray-500"
+                        aria-label="댓글 삭제"
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </button>
+                    )}
+                  </div>
+                  <p className="mt-1.5 text-sm text-gray-700 leading-relaxed whitespace-pre-wrap break-words">
+                    {comment.content}
+                  </p>
                 </div>
               ))}
 
