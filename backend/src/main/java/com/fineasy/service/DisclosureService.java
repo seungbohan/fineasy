@@ -162,16 +162,11 @@ public class DisclosureService {
             String reportName = node.path("report_nm").asText("");
             String filerName = node.path("flr_nm").asText("");
             String receiptDate = node.path("rcept_dt").asText("");
-            String corpCls = node.path("corp_cls").asText("");
 
-            // corp_cls: Y=유가, K=코스닥, N=코넥스, E=기타
-            String disclosureType = switch (corpCls) {
-                case "Y" -> "유가증권";
-                case "K" -> "코스닥";
-                case "N" -> "코넥스";
-                case "E" -> "기타";
-                default -> corpCls;
-            };
+            String disclosureType = classifyDisclosureType(reportName);
+
+            // Filter: skip minor/unimportant disclosures
+            if ("기타".equals(disclosureType)) continue;
 
             String dartUrl = String.format(DART_URL_TEMPLATE, receiptNo);
 
@@ -179,7 +174,66 @@ public class DisclosureService {
                     receiptNo, reportName, filerName, receiptDate, disclosureType, dartUrl));
         }
 
+        // DART API returns newest first, but ensure sort by date descending
+        items.sort((a, b) -> b.receiptDate().compareTo(a.receiptDate()));
+
         return items;
+    }
+
+    /**
+     * Classify disclosure type based on report name for user-friendly display.
+     * Returns "기타" for unimportant disclosures that should be filtered out.
+     */
+    private String classifyDisclosureType(String reportName) {
+        if (reportName == null || reportName.isBlank()) return "기타";
+
+        // 정기공시: 사업보고서, 반기보고서, 분기보고서
+        if (reportName.contains("사업보고서")) return "정기공시";
+        if (reportName.contains("반기보고서")) return "정기공시";
+        if (reportName.contains("분기보고서")) return "정기공시";
+
+        // 주요사항보고
+        if (reportName.contains("주요사항보고")) return "주요사항";
+        if (reportName.contains("주요경영사항")) return "주요사항";
+        if (reportName.contains("풍문또는보도")) return "주요사항";
+        if (reportName.contains("공정공시")) return "주요사항";
+        if (reportName.contains("조회공시")) return "주요사항";
+
+        // 자본변동/발행공시
+        if (reportName.contains("유상증자")) return "자본변동";
+        if (reportName.contains("무상증자")) return "자본변동";
+        if (reportName.contains("전환사채")) return "자본변동";
+        if (reportName.contains("신주인수권")) return "자본변동";
+        if (reportName.contains("합병")) return "자본변동";
+        if (reportName.contains("분할")) return "자본변동";
+        if (reportName.contains("자기주식")) return "자본변동";
+        if (reportName.contains("교환사채")) return "자본변동";
+        if (reportName.contains("감자")) return "자본변동";
+        if (reportName.contains("주식소각")) return "자본변동";
+
+        // 지분변동
+        if (reportName.contains("소유상황보고")) return "지분변동";
+        if (reportName.contains("대량보유상황")) return "지분변동";
+        if (reportName.contains("임원ㆍ주요주주")) return "지분변동";
+
+        // 경영권 관련
+        if (reportName.contains("배당")) return "배당";
+        if (reportName.contains("결산실적")) return "실적공시";
+
+        // 기재정정은 원본이 중요한 경우만 포함 (정기공시 정정 등)
+        if (reportName.contains("기재정정")) {
+            if (reportName.contains("사업보고서") || reportName.contains("반기보고서")
+                    || reportName.contains("분기보고서") || reportName.contains("주요사항")) {
+                return "정정공시";
+            }
+            return "기타";
+        }
+
+        // 감사보고서
+        if (reportName.contains("감사보고서")) return "감사보고";
+
+        // 나머지는 기타 (필터링 대상)
+        return "기타";
     }
 
     /**

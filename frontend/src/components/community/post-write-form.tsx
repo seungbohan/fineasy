@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { Send } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuthStore } from '@/stores/auth-store';
@@ -16,12 +16,13 @@ interface PostWriteFormProps {
 
 /**
  * Post creation form for the stock community discussion board.
- * Shows a login prompt for unauthenticated users.
+ * Shows a fake textarea for unauthenticated users that redirects to login on tap.
  */
 export function PostWriteForm({ stockCode }: PostWriteFormProps) {
   const { isAuthenticated } = useAuthStore();
   const [content, setContent] = useState('');
   const createPost = useCreatePost();
+  const router = useRouter();
 
   const trimmedLength = content.trim().length;
   const isValid = trimmedLength >= MIN_LENGTH && trimmedLength <= MAX_LENGTH;
@@ -40,15 +41,18 @@ export function PostWriteForm({ stockCode }: PostWriteFormProps) {
   if (!isAuthenticated) {
     return (
       <div className="rounded-2xl bg-white p-4">
-        <div className="flex items-center justify-center gap-1 py-3">
-          <span className="text-sm text-gray-500">의견을 남기려면</span>
-          <Link
-            href="/login"
-            className="text-sm font-semibold text-[#3182F6] hover:underline"
-          >
-            로그인
-          </Link>
-          <span className="text-sm text-gray-500">해주세요</span>
+        <button
+          onClick={() => router.push('/login')}
+          className="w-full text-left rounded-xl bg-gray-50 p-3 text-sm text-gray-400 cursor-pointer transition-all hover:ring-2 hover:ring-[#3182F6]/30"
+        >
+          종목에 대한 의견을 공유해보세요
+        </button>
+        <div className="mt-2 flex items-center justify-center">
+          <span className="text-[12px] text-gray-400">
+            글을 작성하려면{' '}
+            <span className="font-semibold text-[#3182F6]">로그인</span>이
+            필요합니다
+          </span>
         </div>
       </div>
     );

@@ -83,10 +83,50 @@ function getDisclosureTypeBadgeClass(type: string): string {
   if (lower.includes('주요') || lower === '8-k') {
     return 'bg-red-50 text-red-500';
   }
+  if (lower.includes('자본') || lower.includes('배당')) {
+    return 'bg-emerald-50 text-emerald-600';
+  }
   if (lower.includes('지분') || lower.includes('소유')) {
     return 'bg-amber-50 text-amber-600';
   }
+  if (lower.includes('실적')) {
+    return 'bg-purple-50 text-purple-600';
+  }
+  if (lower.includes('정정')) {
+    return 'bg-orange-50 text-orange-500';
+  }
+  if (lower.includes('감사')) {
+    return 'bg-slate-100 text-slate-600';
+  }
   return 'bg-gray-100 text-gray-600';
+}
+
+/** Format disclosure date with relative time (e.g. "2025.03.20 (5일 전)") */
+function formatDisclosureDate(dateStr: string): string {
+  // DART dates come as "yyyyMMdd" format
+  const formatted = dateStr.length === 8
+    ? `${dateStr.slice(0, 4)}.${dateStr.slice(4, 6)}.${dateStr.slice(6, 8)}`
+    : dateStr;
+
+  const year = dateStr.length === 8 ? parseInt(dateStr.slice(0, 4)) : NaN;
+  const month = dateStr.length === 8 ? parseInt(dateStr.slice(4, 6)) - 1 : NaN;
+  const day = dateStr.length === 8 ? parseInt(dateStr.slice(6, 8)) : NaN;
+
+  if (isNaN(year)) return formatted;
+
+  const date = new Date(year, month, day);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+  if (diffDays === 0) return `${formatted} (오늘)`;
+  if (diffDays === 1) return `${formatted} (어제)`;
+  if (diffDays <= 30) return `${formatted} (${diffDays}일 전)`;
+  if (diffDays <= 365) {
+    const months = Math.floor(diffDays / 30);
+    return `${formatted} (${months}개월 전)`;
+  }
+  return formatted;
 }
 
 export default function StockDetailPage({
@@ -662,16 +702,18 @@ function DomesticDisclosureList({
               <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${getDisclosureTypeBadgeClass(item.disclosureType)}`}>
                 {item.disclosureType}
               </span>
-              <span className="flex items-center gap-1 text-[11px] text-gray-400">
-                <Calendar className="h-3 w-3" />
-                {formatDate(item.filingDate)}
-              </span>
             </div>
             <p className="text-[13px] font-medium text-gray-900 leading-snug line-clamp-2 group-hover:text-[#3182F6] transition-colors">
               {item.title}
             </p>
             <div className="mt-1.5 flex items-center justify-between">
-              <span className="text-[11px] text-gray-400">{item.submitter}</span>
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] text-gray-400">{item.submitter}</span>
+                <span className="flex items-center gap-1 text-[11px] text-gray-400">
+                  <Calendar className="h-3 w-3" />
+                  {formatDisclosureDate(item.filingDate)}
+                </span>
+              </div>
               <Sparkles className="h-3.5 w-3.5 text-gray-300 group-hover:text-[#3182F6] transition-colors" />
             </div>
           </button>
