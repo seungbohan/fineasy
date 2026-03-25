@@ -11,6 +11,7 @@ import org.springframework.stereotype.Component;
 
 import java.time.Instant;
 import java.util.*;
+import java.util.concurrent.*;
 
 import static com.fineasy.external.kis.KisResponseParser.*;
 
@@ -56,45 +57,55 @@ public class KisMarketDataAdapter implements MarketDataProvider {
 
     @Override
     public List<MarketIndex> getMarketIndices() {
-        log.debug("Fetching market indices from KIS API");
+        log.debug("Fetching market indices from KIS API (parallel)");
 
-        List<MarketIndex> indices = new ArrayList<>();
+        // Fetch domestic and overseas in parallel using two threads
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        try {
+            Future<List<MarketIndex>> domesticFuture = executor.submit(() -> {
+                List<MarketIndex> result = new ArrayList<>();
+                for (IndexConfig config : DOMESTIC_INDICES) {
+                    try {
+                        result.add(fetchSingleIndex(config));
+                        Thread.sleep(500);
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                    } catch (Exception e) {
+                        log.warn("Failed to fetch index {}: {}", config.displayCode(), e.getMessage());
+                        result.add(new MarketIndex(config.displayCode(), config.name(),
+                                0.0, 0.0, 0.0, List.of(), Instant.now()));
+                    }
+                }
+                return result;
+            });
 
-        for (IndexConfig config : DOMESTIC_INDICES) {
-            try {
-                MarketIndex index = fetchSingleIndex(config);
-                indices.add(index);
-                Thread.sleep(1000);
-            } catch (InterruptedException ie) {
-                Thread.currentThread().interrupt();
-            } catch (Exception e) {
-                log.warn("Failed to fetch index {} ({}): {}", config.displayCode(), config.name(), e.getMessage());
-                indices.add(new MarketIndex(
-                        config.displayCode(), config.name(),
-                        0.0, 0.0, 0.0,
-                        List.of(), Instant.now()
-                ));
-            }
+            Future<List<MarketIndex>> overseasFuture = executor.submit(() -> {
+                List<MarketIndex> result = new ArrayList<>();
+                for (OverseasIndexConfig config : OVERSEAS_INDICES) {
+                    try {
+                        result.add(fetchOverseasIndex(config));
+                        Thread.sleep(500);
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                    } catch (Exception e) {
+                        log.warn("Failed to fetch overseas index {}: {}", config.displayCode(), e.getMessage());
+                        result.add(new MarketIndex(config.displayCode(), config.name(),
+                                0.0, 0.0, 0.0, List.of(), Instant.now()));
+                    }
+                }
+                return result;
+            });
+
+            List<MarketIndex> indices = new ArrayList<>();
+            indices.addAll(domesticFuture.get(30, TimeUnit.SECONDS));
+            indices.addAll(overseasFuture.get(30, TimeUnit.SECONDS));
+            return Collections.unmodifiableList(indices);
+        } catch (Exception e) {
+            log.error("Failed to fetch market indices in parallel: {}", e.getMessage());
+            return List.of();
+        } finally {
+            executor.shutdown();
         }
-
-        for (OverseasIndexConfig config : OVERSEAS_INDICES) {
-            try {
-                MarketIndex index = fetchOverseasIndex(config);
-                indices.add(index);
-                Thread.sleep(1000);
-            } catch (InterruptedException ie) {
-                Thread.currentThread().interrupt();
-            } catch (Exception e) {
-                log.warn("Failed to fetch overseas index {} ({}): {}", config.displayCode(), config.name(), e.getMessage());
-                indices.add(new MarketIndex(
-                        config.displayCode(), config.name(),
-                        0.0, 0.0, 0.0,
-                        List.of(), Instant.now()
-                ));
-            }
-        }
-
-        return Collections.unmodifiableList(indices);
     }
 
     @Override

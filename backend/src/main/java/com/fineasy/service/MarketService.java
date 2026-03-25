@@ -31,7 +31,7 @@ public class MarketService {
     private static final Logger log = LoggerFactory.getLogger(MarketService.class);
 
     private static final String MARKET_INDEX_CACHE_KEY = "market:indices";
-    private static final Duration MARKET_INDEX_CACHE_TTL = Duration.ofMinutes(5);
+    private static final Duration MARKET_INDEX_CACHE_TTL = Duration.ofMinutes(10);
 
     private final MarketDataProvider marketDataProvider;
     private final ObjectMapper objectMapper;
