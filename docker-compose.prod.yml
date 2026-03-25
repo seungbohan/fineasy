@@ -43,8 +43,9 @@ services:
     container_name: fineasy-backend
     restart: unless-stopped
     environment:
+      TZ: Asia/Seoul
       SPRING_PROFILES_ACTIVE: prod
-      JAVA_OPTS: "-Xms128m -Xmx220m -XX:+UseG1GC -XX:MaxGCPauseMillis=200 -XX:+UseStringDeduplication -XX:MaxMetaspaceSize=150m -XX:+UseCompressedOops"
+      JAVA_OPTS: "-Xms128m -Xmx220m -XX:+UseG1GC -XX:MaxGCPauseMillis=200 -XX:+UseStringDeduplication -XX:MaxMetaspaceSize=150m -XX:+UseCompressedOops -Duser.timezone=Asia/Seoul"
       DB_HOST: postgres
       DB_PORT: 5432
       DB_NAME: ${DB_NAME:-fineasydb}
@@ -83,6 +84,7 @@ services:
     container_name: fineasy-frontend
     restart: unless-stopped
     environment:
+      TZ: Asia/Seoul
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-}
       INTERNAL_API_URL: http://fineasy-backend:8080/api/v1
     depends_on:
