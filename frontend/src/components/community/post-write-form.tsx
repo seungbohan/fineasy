@@ -42,18 +42,15 @@ export function PostWriteForm({ stockCode }: PostWriteFormProps) {
     return (
       <div className="rounded-2xl bg-white p-4">
         <button
-          onClick={() => router.push('/login')}
+          onClick={() => {
+            if (confirm('글을 작성하려면 로그인이 필요합니다.\n로그인 하시겠습니까?')) {
+              router.push('/login');
+            }
+          }}
           className="w-full text-left rounded-xl bg-gray-50 p-3 text-sm text-gray-400 cursor-pointer transition-all hover:ring-2 hover:ring-[#3182F6]/30"
         >
           종목에 대한 의견을 공유해보세요
         </button>
-        <div className="mt-2 flex items-center justify-center">
-          <span className="text-[12px] text-gray-400">
-            글을 작성하려면{' '}
-            <span className="font-semibold text-[#3182F6]">로그인</span>이
-            필요합니다
-          </span>
-        </div>
       </div>
     );
   }
