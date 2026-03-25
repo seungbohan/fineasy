@@ -1,5 +1,7 @@
 'use client';
 
+import { useState } from 'react';
+import Link from 'next/link';
 import { ThumbsUp, ThumbsDown, MessageCircle, Trash2 } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth-store';
 import { useToggleReaction, useDeletePost } from '@/hooks/use-community';
@@ -20,11 +22,16 @@ export function PostCard({ post, stockCode, onOpenComments }: PostCardProps) {
   const { user } = useAuthStore();
   const toggleReaction = useToggleReaction(stockCode);
   const deletePost = useDeletePost();
+  const [showLoginPrompt, setShowLoginPrompt] = useState(false);
 
   const isAuthor = user?.nickname === post.authorNickname;
 
   const handleReaction = (reactionType: 'LIKE' | 'DISLIKE') => {
-    if (!user) return;
+    if (!user) {
+      setShowLoginPrompt(true);
+      setTimeout(() => setShowLoginPrompt(false), 3000);
+      return;
+    }
     toggleReaction.mutate({ postId: post.id, reactionType });
   };
 
@@ -74,6 +81,20 @@ export function PostCard({ post, stockCode, onOpenComments }: PostCardProps) {
       <p className="mt-2.5 text-sm text-gray-800 leading-relaxed whitespace-pre-wrap break-words">
         {post.content}
       </p>
+
+      {/* Login prompt */}
+      {showLoginPrompt && (
+        <div className="mt-2 flex items-center justify-center gap-1 rounded-lg bg-blue-50 px-3 py-2 animate-in fade-in slide-in-from-top-1 duration-200">
+          <span className="text-[12px] text-gray-500">반응하려면</span>
+          <Link
+            href="/login"
+            className="text-[12px] font-semibold text-[#3182F6] hover:underline"
+          >
+            로그인
+          </Link>
+          <span className="text-[12px] text-gray-500">해주세요</span>
+        </div>
+      )}
 
       {/* Footer: reactions + comments */}
       <div className="mt-3 flex items-center gap-1">

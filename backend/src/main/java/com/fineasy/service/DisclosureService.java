@@ -1,11 +1,17 @@
 package com.fineasy.service;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fineasy.dto.response.DisclosureSummaryResponse;
 import com.fineasy.dto.response.DomesticDisclosureResponse;
 import com.fineasy.dto.response.OverseasDisclosureResponse;
 import com.fineasy.entity.DartCorpCodeEntity;
+import com.fineasy.exception.AiServiceUnavailableException;
 import com.fineasy.exception.EntityNotFoundException;
 import com.fineasy.external.dart.DartApiClient;
+import com.fineasy.external.openai.OpenAiClient;
+import com.fineasy.external.openai.OpenAiPromptBuilder;
 import com.fineasy.external.sec.SecEdgarApiClient;
 import com.fineasy.repository.DartCorpCodeRepository;
 import org.slf4j.Logger;
@@ -33,22 +39,34 @@ public class DisclosureService {
 
     private static final Duration DOMESTIC_CACHE_TTL = Duration.ofMinutes(30);
     private static final Duration OVERSEAS_CACHE_TTL = Duration.ofHours(1);
+    private static final Duration SUMMARY_CACHE_TTL = Duration.ofHours(24);
     private static final String DOMESTIC_CACHE_PREFIX = "disclosure:domestic:";
     private static final String OVERSEAS_CACHE_PREFIX = "disclosure:overseas:";
+    private static final String SUMMARY_CACHE_PREFIX = "disclosure:summary:";
+    private static final int MAX_TOKENS_DISCLOSURE_SUMMARY = 1000;
 
     private final DartCorpCodeRepository dartCorpCodeRepository;
     private final DartApiClient dartApiClient;
     private final SecEdgarApiClient secEdgarApiClient;
     private final RedisCacheHelper redisCacheHelper;
+    private final OpenAiClient openAiClient;
+    private final OpenAiPromptBuilder promptBuilder;
+    private final ObjectMapper objectMapper;
 
     public DisclosureService(DartCorpCodeRepository dartCorpCodeRepository,
                               @Autowired(required = false) DartApiClient dartApiClient,
                               @Autowired(required = false) SecEdgarApiClient secEdgarApiClient,
-                              RedisCacheHelper redisCacheHelper) {
+                              RedisCacheHelper redisCacheHelper,
+                              @Autowired(required = false) OpenAiClient openAiClient,
+                              @Autowired(required = false) OpenAiPromptBuilder promptBuilder,
+                              ObjectMapper objectMapper) {
         this.dartCorpCodeRepository = dartCorpCodeRepository;
         this.dartApiClient = dartApiClient;
         this.secEdgarApiClient = secEdgarApiClient;
         this.redisCacheHelper = redisCacheHelper;
+        this.openAiClient = openAiClient;
+        this.promptBuilder = promptBuilder;
+        this.objectMapper = objectMapper;
     }
 
     /**
@@ -162,6 +180,94 @@ public class DisclosureService {
         }
 
         return items;
+    }
+
+    /**
+     * Generate AI summary for a domestic disclosure by receipt number.
+     */
+    public DisclosureSummaryResponse getDisclosureSummary(String stockCode, String receiptNumber) {
+        String cacheKey = SUMMARY_CACHE_PREFIX + receiptNumber;
+
+        DisclosureSummaryResponse cached = redisCacheHelper.getFromCache(
+                cacheKey, DisclosureSummaryResponse.class);
+        if (cached != null) {
+            log.debug("Disclosure summary cache hit for receiptNumber={}", receiptNumber);
+            return cached;
+        }
+
+        // Find the disclosure in the list to get metadata
+        DomesticDisclosureResponse disclosureList = getDomesticDisclosures(stockCode);
+        DomesticDisclosureResponse.DisclosureItem target = disclosureList.disclosures().stream()
+                .filter(d -> d.receiptNumber().equals(receiptNumber))
+                .findFirst()
+                .orElseThrow(() -> new EntityNotFoundException("Disclosure", receiptNumber));
+
+        if (openAiClient == null || promptBuilder == null) {
+            throw new AiServiceUnavailableException(
+                    "AI service is not configured. Please set openai.api-key.");
+        }
+
+        try {
+            String systemPrompt = promptBuilder.getDisclosureSummarySystemPrompt();
+            String userPrompt = promptBuilder.buildDisclosureSummaryPrompt(
+                    disclosureList.corpName(),
+                    target.reportName(),
+                    target.filerName(),
+                    target.receiptDate(),
+                    target.disclosureType());
+
+            String aiResponse = openAiClient.chat(systemPrompt, userPrompt, MAX_TOKENS_DISCLOSURE_SUMMARY);
+            DisclosureSummaryResponse response = parseDisclosureSummaryResponse(target, aiResponse);
+
+            redisCacheHelper.putToCache(cacheKey, response, SUMMARY_CACHE_TTL);
+            return response;
+        } catch (AiServiceUnavailableException e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("Failed to generate disclosure summary for receiptNumber={}: {}",
+                    receiptNumber, e.getMessage(), e);
+            throw new AiServiceUnavailableException(
+                    "AI disclosure summary service is temporarily unavailable.", e);
+        }
+    }
+
+    private DisclosureSummaryResponse parseDisclosureSummaryResponse(
+            DomesticDisclosureResponse.DisclosureItem item, String aiResponse) {
+        try {
+            JsonNode root = objectMapper.readTree(aiResponse);
+
+            String overview = root.path("overview").asText("공시 요약을 생성할 수 없습니다.");
+            String keyPoints = root.path("keyPoints").asText("핵심 내용을 분석할 수 없습니다.");
+
+            List<String> highlights = List.of();
+            if (root.has("highlights") && root.get("highlights").isArray()) {
+                highlights = objectMapper.convertValue(root.get("highlights"),
+                        new TypeReference<List<String>>() {});
+            }
+
+            String investorImplication = root.path("investorImplication").asText("");
+
+            String dartUrl = String.format(DART_URL_TEMPLATE, item.receiptNumber());
+
+            return new DisclosureSummaryResponse(
+                    item.receiptNumber(),
+                    item.reportName(),
+                    item.filerName(),
+                    item.receiptDate(),
+                    item.disclosureType(),
+                    dartUrl,
+                    new DisclosureSummaryResponse.DisclosureSummary(
+                            overview,
+                            keyPoints,
+                            highlights,
+                            investorImplication,
+                            DisclosureSummaryResponse.AI_DISCLAIMER
+                    )
+            );
+        } catch (Exception e) {
+            log.error("Failed to parse disclosure summary AI response: {}", e.getMessage());
+            throw new RuntimeException("Failed to parse disclosure summary", e);
+        }
     }
 
     private List<OverseasDisclosureResponse.FilingItem> parseSecFilings(JsonNode root, String cik) {

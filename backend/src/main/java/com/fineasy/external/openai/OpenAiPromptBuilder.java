@@ -447,6 +447,39 @@ public class OpenAiPromptBuilder {
         return BOK_TERM_EXPLANATION_SYSTEM_PROMPT;
     }
 
+    private static final String DISCLOSURE_SUMMARY_SYSTEM_PROMPT = """
+            당신은 금융 교육 플랫폼의 기업 공시 분석 전문가입니다.
+            주식 투자 초보자가 이해할 수 있는 쉬운 한국어로 공시 내용을 설명하세요.
+            전문 용어를 사용할 경우 반드시 괄호 안에 쉬운 설명을 추가하세요.
+            투자 권유 문구는 절대 포함하지 마세요.
+            응답은 반드시 아래 JSON 형식으로 제공하세요.
+
+            응답 JSON 구조:
+            {
+              "overview": "이 공시가 무엇인지 초보자도 이해할 수 있게 설명 (2~3문장)",
+              "keyPoints": "공시의 핵심 내용과 중요한 포인트 (2~3문장)",
+              "highlights": ["주요 포인트 1", "주요 포인트 2", "주요 포인트 3"],
+              "investorImplication": "투자자가 알아야 할 시사점 (1~2문장, 투자 권유 제외)"
+            }
+            """;
+
+    public String getDisclosureSummarySystemPrompt() {
+        return DISCLOSURE_SUMMARY_SYSTEM_PROMPT;
+    }
+
+    public String buildDisclosureSummaryPrompt(String corpName, String reportName,
+                                                String filerName, String filingDate,
+                                                String disclosureType) {
+        StringBuilder sb = new StringBuilder();
+        sb.append(String.format("기업명: %s\n", corpName));
+        sb.append(String.format("공시 제목: %s\n", reportName));
+        sb.append(String.format("제출인: %s\n", filerName));
+        sb.append(String.format("접수일자: %s\n", filingDate));
+        sb.append(String.format("공시 유형: %s\n\n", disclosureType));
+        sb.append("위 공시 정보를 바탕으로 초보 투자자가 이해할 수 있도록 요약하여 JSON 형식으로 응답하세요.");
+        return sb.toString();
+    }
+
     public String buildBokTermExplanationPrompt(String term, String englishTerm, String definition) {
         StringBuilder sb = new StringBuilder();
         sb.append(String.format("용어: %s\n", term));

@@ -1,6 +1,7 @@
 package com.fineasy.controller;
 
 import com.fineasy.dto.ApiResponse;
+import com.fineasy.dto.response.DisclosureSummaryResponse;
 import com.fineasy.dto.response.DomesticDisclosureResponse;
 import com.fineasy.dto.response.OverseasDisclosureResponse;
 import com.fineasy.service.DisclosureService;
@@ -36,5 +37,14 @@ public class DisclosureController {
             @PathVariable String stockCode) {
         return ResponseEntity.ok(ApiResponse.success(
                 disclosureService.getOverseasDisclosures(stockCode)));
+    }
+
+    @GetMapping("/domestic/{stockCode}/summary/{receiptNumber}")
+    @Operation(summary = "Get AI-generated summary for a DART disclosure")
+    public ResponseEntity<ApiResponse<DisclosureSummaryResponse>> getDisclosureSummary(
+            @PathVariable String stockCode,
+            @PathVariable String receiptNumber) {
+        return ResponseEntity.ok(ApiResponse.success(
+                disclosureService.getDisclosureSummary(stockCode, receiptNumber)));
     }
 }

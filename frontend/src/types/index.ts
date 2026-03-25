@@ -268,6 +268,7 @@ export interface CryptoMarketResponse {
 export interface DomesticDisclosure {
   id: number;
   stockCode: string;
+  receiptNumber: string;
   title: string;
   submitter: string;
   filingDate: string;
@@ -283,6 +284,23 @@ export interface OverseasDisclosure {
   filingType: string;
   filingDate: string;
   edgarUrl: string;
+}
+
+/** AI-generated disclosure summary */
+export interface DisclosureSummaryResponse {
+  receiptNumber: string;
+  reportName: string;
+  filerName: string;
+  filingDate: string;
+  disclosureType: string;
+  dartUrl: string;
+  summary: {
+    overview: string;
+    keyPoints: string;
+    highlights: string[];
+    investorImplication: string;
+    disclaimer: string;
+  };
 }
 
 export interface WatchlistItem {

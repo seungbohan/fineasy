@@ -42,7 +42,7 @@ import { FundamentalAnalysis } from '@/components/stocks/fundamental-analysis';
 import { useStockDetail } from '@/hooks/use-stocks';
 import { useStockNews, useNewsAnalysis, useStockNewsSummary, useSentimentTrend } from '@/hooks/use-news';
 import { useAnalysisReport } from '@/hooks/use-analysis';
-import { useDomesticDisclosure, useOverseasDisclosure } from '@/hooks/use-disclosure';
+import { useDomesticDisclosure, useOverseasDisclosure, useDisclosureSummary } from '@/hooks/use-disclosure';
 import { SentimentTrendChart } from '@/components/shared/sentiment-trend-chart';
 import { PredictionCard } from '@/components/stocks/prediction-card';
 import { useRouter } from 'next/navigation';
@@ -559,10 +559,34 @@ function DisclosureTab({
   stockCode: string;
   isDomestic: boolean;
 }) {
-  if (isDomestic) {
-    return <DomesticDisclosureList stockCode={stockCode} />;
-  }
-  return <OverseasDisclosureList stockCode={stockCode} />;
+  const [selectedReceiptNumber, setSelectedReceiptNumber] = useState<string | null>(null);
+  const [summarySheetOpen, setSummarySheetOpen] = useState(false);
+
+  const handleOpenSummary = (receiptNumber: string) => {
+    setSelectedReceiptNumber(receiptNumber);
+    setSummarySheetOpen(true);
+  };
+
+  return (
+    <>
+      {isDomestic ? (
+        <DomesticDisclosureList stockCode={stockCode} onOpenSummary={handleOpenSummary} />
+      ) : (
+        <OverseasDisclosureList stockCode={stockCode} />
+      )}
+
+      {/* Disclosure Summary Sheet */}
+      <DisclosureSummarySheet
+        stockCode={stockCode}
+        receiptNumber={selectedReceiptNumber}
+        open={summarySheetOpen}
+        onOpenChange={(open) => {
+          setSummarySheetOpen(open);
+          if (!open) setSelectedReceiptNumber(null);
+        }}
+      />
+    </>
+  );
 }
 
 /** Skeleton for disclosure list loading state */
@@ -584,7 +608,13 @@ function DisclosureSkeleton() {
 }
 
 /** Domestic disclosure list (DART) */
-function DomesticDisclosureList({ stockCode }: { stockCode: string }) {
+function DomesticDisclosureList({
+  stockCode,
+  onOpenSummary,
+}: {
+  stockCode: string;
+  onOpenSummary: (receiptNumber: string) => void;
+}) {
   const { data, isLoading, isError } = useDomesticDisclosure(stockCode);
 
   if (isLoading) return <DisclosureSkeleton />;
@@ -623,12 +653,10 @@ function DomesticDisclosureList({ stockCode }: { stockCode: string }) {
 
       <div className="space-y-2">
         {data.map((item) => (
-          <a
+          <button
             key={item.id}
-            href={item.dartUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="group block rounded-xl bg-white p-4 transition-colors hover:bg-gray-50 active:bg-gray-100"
+            onClick={() => onOpenSummary(item.receiptNumber)}
+            className="group block w-full text-left rounded-xl bg-white p-4 transition-colors hover:bg-gray-50 active:bg-gray-100"
           >
             <div className="flex items-center gap-2 mb-1.5">
               <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${getDisclosureTypeBadgeClass(item.disclosureType)}`}>
@@ -644,12 +672,151 @@ function DomesticDisclosureList({ stockCode }: { stockCode: string }) {
             </p>
             <div className="mt-1.5 flex items-center justify-between">
               <span className="text-[11px] text-gray-400">{item.submitter}</span>
-              <ExternalLink className="h-3.5 w-3.5 text-gray-300 group-hover:text-[#3182F6] transition-colors" />
+              <Sparkles className="h-3.5 w-3.5 text-gray-300 group-hover:text-[#3182F6] transition-colors" />
             </div>
-          </a>
+          </button>
         ))}
       </div>
     </div>
+  );
+}
+
+/** Disclosure Summary Sheet - AI-generated summary for DART disclosures */
+function DisclosureSummarySheet({
+  stockCode,
+  receiptNumber,
+  open,
+  onOpenChange,
+}: {
+  stockCode: string;
+  receiptNumber: string | null;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const { data, isLoading, isError } = useDisclosureSummary(
+    stockCode,
+    open ? receiptNumber : null
+  );
+
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent
+        side="bottom"
+        className="mx-auto max-w-screen-md rounded-t-3xl max-h-[85vh] overflow-y-auto"
+      >
+        <div className="flex justify-center pt-3 pb-1">
+          <div className="h-1.5 w-12 rounded-full bg-gray-200" />
+        </div>
+
+        <SheetHeader className="px-4 pb-0">
+          <SheetTitle className="text-base font-bold text-gray-900 leading-snug pr-6">
+            {data?.reportName ?? '공시 AI 요약'}
+          </SheetTitle>
+          <SheetDescription asChild>
+            <div className="flex items-center gap-2 flex-wrap pt-1">
+              {data && (
+                <>
+                  <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${getDisclosureTypeBadgeClass(data.disclosureType)}`}>
+                    {data.disclosureType}
+                  </span>
+                  <span className="text-[11px] text-gray-400">
+                    {data.filerName}
+                  </span>
+                  <span className="text-[11px] text-gray-400">
+                    {formatDate(data.filingDate)}
+                  </span>
+                </>
+              )}
+            </div>
+          </SheetDescription>
+        </SheetHeader>
+
+        {isLoading ? (
+          <div className="space-y-5 px-4 py-2">
+            <div className="space-y-2"><Skeleton className="h-4 w-20" /><Skeleton className="h-4 w-full" /><Skeleton className="h-4 w-3/4" /></div>
+            <div className="space-y-2"><Skeleton className="h-4 w-24" /><Skeleton className="h-4 w-full" /><Skeleton className="h-4 w-5/6" /></div>
+            <div className="space-y-2"><Skeleton className="h-4 w-20" /><div className="flex gap-2"><Skeleton className="h-7 w-16 rounded-full" /><Skeleton className="h-7 w-20 rounded-full" /></div></div>
+          </div>
+        ) : isError ? (
+          <div className="flex flex-col items-center justify-center gap-3 px-4 py-12">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gray-100">
+              <AlertCircle className="h-6 w-6 text-gray-400" />
+            </div>
+            <p className="text-sm text-gray-500">요약을 불러올 수 없습니다</p>
+            <p className="text-xs text-gray-400">잠시 후 다시 시도해 주세요</p>
+          </div>
+        ) : data ? (
+          <div className="space-y-5 px-4 py-2">
+            <section>
+              <div className="flex items-center gap-1.5 mb-2">
+                <Sparkles className="h-3.5 w-3.5 text-[#3182F6]" />
+                <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">AI 요약</h3>
+              </div>
+              <p className="text-sm text-gray-800 leading-relaxed bg-blue-50/50 rounded-xl p-3">
+                {data.summary.overview}
+              </p>
+            </section>
+
+            <section>
+              <div className="flex items-center gap-1.5 mb-2">
+                <FileText className="h-3.5 w-3.5 text-[#3182F6]" />
+                <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">핵심 내용</h3>
+              </div>
+              <p className="text-sm text-gray-700 leading-relaxed">
+                {data.summary.keyPoints}
+              </p>
+            </section>
+
+            {data.summary.highlights?.length > 0 && (
+              <section>
+                <div className="flex items-center gap-1.5 mb-2">
+                  <Megaphone className="h-3.5 w-3.5 text-[#3182F6]" />
+                  <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">주요 포인트</h3>
+                </div>
+                <ul className="space-y-1.5">
+                  {data.summary.highlights.map((h, i) => (
+                    <li key={i} className="flex items-start gap-2 text-sm text-gray-700">
+                      <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[#3182F6]" />
+                      {h}
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
+
+            {data.summary.investorImplication && (
+              <section>
+                <div className="flex items-center gap-1.5 mb-2">
+                  <TrendingUp className="h-3.5 w-3.5 text-[#3182F6]" />
+                  <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">투자자 시사점</h3>
+                </div>
+                <p className="text-sm text-gray-700 leading-relaxed">
+                  {data.summary.investorImplication}
+                </p>
+              </section>
+            )}
+
+            <p className="text-[11px] text-gray-400 leading-relaxed">
+              {data.summary.disclaimer}
+            </p>
+          </div>
+        ) : null}
+
+        {data && !isLoading && !isError && (
+          <SheetFooter className="px-4 pb-6">
+            <a
+              href={data.dartUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-gray-100 px-4 py-3 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-200"
+            >
+              <ExternalLink className="h-4 w-4" />
+              DART 원문 보기
+            </a>
+          </SheetFooter>
+        )}
+      </SheetContent>
+    </Sheet>
   );
 }
 

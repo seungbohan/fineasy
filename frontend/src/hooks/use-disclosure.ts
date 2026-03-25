@@ -1,7 +1,7 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { DomesticDisclosure, OverseasDisclosure } from '@/types';
+import { DomesticDisclosure, OverseasDisclosure, DisclosureSummaryResponse } from '@/types';
 import { apiClient } from '@/lib/api-client';
 
 interface DomesticDisclosureApiResponse {
@@ -45,6 +45,7 @@ export function useDomesticDisclosure(stockCode: string) {
       return res.disclosures.map((item, idx) => ({
         id: idx,
         stockCode: res.stockCode,
+        receiptNumber: item.receiptNumber,
         title: item.reportName.trim(),
         submitter: item.filerName,
         filingDate: item.receiptDate,
@@ -79,5 +80,21 @@ export function useOverseasDisclosure(stockCode: string) {
     },
     enabled: !!stockCode,
     staleTime: 5 * 60 * 1000,
+  });
+}
+
+/**
+ * Fetch AI-generated summary for a DART disclosure.
+ */
+export function useDisclosureSummary(stockCode: string, receiptNumber: string | null) {
+  return useQuery<DisclosureSummaryResponse>({
+    queryKey: ['disclosure', 'summary', stockCode, receiptNumber],
+    queryFn: async () => {
+      return apiClient.get<DisclosureSummaryResponse>(
+        `/disclosure/domestic/${stockCode}/summary/${receiptNumber}`
+      );
+    },
+    enabled: !!stockCode && !!receiptNumber,
+    staleTime: 1000 * 60 * 60,
   });
 }
