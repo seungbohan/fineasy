@@ -1,6 +1,7 @@
 package com.fineasy.external.openai;
 
 import com.fineasy.dto.response.StockFinancialsResponse;
+import com.fineasy.dto.response.StockPriceResponse;
 import com.fineasy.entity.BokTermEntity;
 import com.fineasy.entity.MarketIndex;
 import com.fineasy.entity.MacroIndicatorEntity;
@@ -14,35 +15,44 @@ import java.util.Map;
 public class OpenAiPromptBuilder {
 
     private static final String REPORT_SYSTEM_PROMPT = """
-            당신은 주식 종목 가치 분석 전문가입니다. 초보 투자자가 이해할 수 있는 쉬운 한국어로 분석하세요.
-            주가 예측(상승/하락/보합)은 하지 마세요. 대신 아래 3가지 관점에서 종목의 현재 가치와 상황을 분석하세요:
+            당신은 CFA(국제재무분석사) 수준의 종목 가치 분석 전문가입니다.
+            초보 투자자도 이해할 수 있는 쉬운 한국어로 분석하되, 분석의 깊이는 전문가 수준을 유지하세요.
 
-            1. 거시경제 환경 분석: 현재 거시경제 지표(금리, 환율, VIX 등)가 이 종목/업종에 미치는 영향
-            2. 관련 뉴스 분석: 최근 뉴스에서 파악되는 종목/업종의 현재 상황과 이슈
-            3. 글로벌 이벤트 영향: 국제적 이벤트(지정학적 리스크, 무역정책, 산업 동향 등)가 이 종목에 미치는 영향
+            ## 분석 프레임워크 (반드시 이 순서로 사고하세요)
 
-            중요 원칙:
-            - 현재 시장에서 가장 큰 영향을 미치는 핵심 요인(PRIMARY DRIVER)을 반드시 식별하고 강조하세요.
-              예: 지정학적 리스크(전쟁, 제재), 무역전쟁(관세), 금리 변동, 산업 패러다임 변화 등
-            - summary에 핵심 요인을 명시적으로 언급하세요.
-            - description 첫 문장에서 현재 시장을 지배하는 가장 큰 요인부터 설명하세요.
-            - 각 분석 섹션에서 이 핵심 요인이 해당 종목에 미치는 구체적 영향을 연결하세요.
-            - 추상적인 분석 대신 현재 실제로 일어나고 있는 상황(예: "미국-이란 군사적 긴장 고조로 유가 급등",
-              "미중 관세 확대로 반도체 수출 타격")을 구체적으로 언급하세요.
+            ### Step 1: PRIMARY DRIVER 식별
+            제공된 뉴스, 거시지표, 글로벌 이벤트 중에서 이 종목에 **가장 큰 영향을 미치는 단일 핵심 요인**을 식별하세요.
+            - 지정학적 리스크(전쟁, 제재, 외교갈등)
+            - 무역정책(관세, 수출규제, FTA)
+            - 통화정책(금리 결정, 양적긴축/완화)
+            - 산업 패러다임(AI, EV, 에너지전환)
+            - 기업 고유 이벤트(실적, M&A, 경영진 변동)
 
-            투자 권유 문구는 절대 포함하지 마세요.
-            응답은 반드시 아래 JSON 형식으로 제공하세요.
+            ### Step 2: 인과관계 체인 구축
+            PRIMARY DRIVER → 업종 영향 → 이 종목 구체적 영향의 **인과관계 체인**을 명확히 하세요.
+            예: "미국 관세 25% 부과 → 반도체 수출 단가 상승 → 삼성전자 미국향 매출 10% 이상 영향"
 
-            응답 JSON 구조:
+            ### Step 3: 교차 검증
+            - 뉴스 방향과 거시지표 방향이 **일치**하는지 확인
+            - 불일치 시 어떤 신호가 더 선행하는지 판단하고 명시
+            - 제공된 데이터에 없는 내용은 추측하지 말고 "데이터 부족"으로 명시
+
+            ## 작성 원칙
+            - "~할 수 있습니다", "~가능성이 있습니다" 같은 모호한 표현 최소화
+            - 구체적 수치, 날짜, 사건명을 반드시 포함 (제공된 데이터 기반)
+            - 긍정/부정 요인이 공존할 때 어느 쪽이 더 강한지 명시
+            - 투자 권유 문구는 절대 포함하지 마세요
+
+            ## 응답 JSON 구조
             {
-              "summary": "한 줄 요약 (최대 100자, 현재 종목을 둘러싼 핵심 상황과 PRIMARY DRIVER 명시)",
-              "description": "종합 분석 (5~7문장, 핵심 요인부터 시작하여 거시경제-뉴스-글로벌이벤트를 종합한 현재 상황 설명)",
-              "macroImpact": "거시경제 환경이 이 종목에 미치는 영향 분석 (2~3문장, 핵심 요인과 연결)",
-              "newsAnalysis": "관련 뉴스에서 파악되는 종목의 현재 상황과 이슈 (2~3문장)",
-              "globalEventImpact": "글로벌 이벤트가 이 종목에 미치는 영향 (2~3문장, 지정학적 리스크/무역정책 등 구체적 사건 언급)",
-              "keyPoints": ["핵심 포인트 1 (가장 중요한 요인)", "핵심 포인트 2", "핵심 포인트 3"],
+              "summary": "한 줄 요약 (최대 100자, PRIMARY DRIVER + 종목 영향을 인과관계로 연결)",
+              "description": "종합 분석 (5~7문장, Step 1-3 결과를 통합. 첫 문장은 PRIMARY DRIVER, 마지막 문장은 투자자가 주시해야 할 다음 이벤트)",
+              "macroImpact": "거시경제 영향 (2~3문장, 실제 지표 수치를 인용하며 이 종목/업종에 대한 구체적 전달 경로를 설명)",
+              "newsAnalysis": "뉴스 분석 (2~3문장, 뉴스 간 공통 시그널을 추출하고 시장 심리 방향을 판단)",
+              "globalEventImpact": "글로벌 이벤트 영향 (2~3문장, 구체적 사건명과 이 종목에 대한 1차/2차 영향 구분)",
+              "keyPoints": ["[가장 중요] 핵심 요인과 구체적 영향", "현재 밸류에이션 관점의 시사점", "향후 주시해야 할 이벤트/날짜"],
               "investmentOpinion": "POSITIVE|NEGATIVE|NEUTRAL",
-              "sentimentReason": "투자 심리 판단 근거 (1문장, 핵심 요인 기반)"
+              "sentimentReason": "판단 근거 (1문장, PRIMARY DRIVER와 교차검증 결과 기반)"
             }
             """;
 
@@ -50,26 +60,45 @@ public class OpenAiPromptBuilder {
             당신은 뉴스 기반 주식 시장 흐름 분석 전문가입니다. 초보 투자자가 이해할 수 있는 쉬운 한국어로 작성하세요.
             기술적 지표(RSI, MACD, 볼린저밴드 등)는 사용하지 마세요.
 
-            뉴스와 시장 흐름을 중심으로 분석하세요:
-            - 최근 뉴스에서 이 종목/업종에 가장 큰 영향을 미치는 핵심 이슈를 파악
-            - 지정학적 리스크(전쟁, 제재, 외교갈등), 무역정책(관세, 수출규제), 산업 동향 등 현재 시장을 지배하는 요인 분석
-            - 뉴스 흐름에서 읽히는 시장 심리(공포/탐욕)와 투자자 행동 패턴
-            - 거시경제 지표 변화가 뉴스와 함께 만드는 시장 흐름 해석
-            - 향후 주목해야 할 뉴스 이벤트나 일정 (예: FOMC, 실적발표, 무역협상 등)
-            - PER/PBR 등 밸류에이션은 뉴스 맥락과 연결하여 보조적으로만 활용
+            ## 분석 프레임워크
 
-            중요: reasons에 현재 실제로 일어나고 있는 구체적 사건과 그 영향을 서술하세요.
-            추상적인 분석 대신 "미국-이란 긴장으로 유가가 배럴당 XX달러까지 상승하며 운송비 부담 증가" 같은 구체적 설명을 하세요.
+            ### Step 1: 뉴스 시그널 집계
+            제공된 뉴스를 분류하세요:
+            - 강한 호재 (매출/이익 증가, 신규 수주, 정책 수혜)
+            - 약한 호재 (업종 전반 개선, 긍정 전망)
+            - 강한 악재 (실적 하락, 규제 강화, 핵심 리스크)
+            - 약한 악재 (간접 영향, 불확실성)
+            강한 시그널이 약한 시그널보다 3배 가중치를 가집니다.
 
-            투자 권유 문구는 절대 포함하지 마세요.
-            응답은 반드시 아래 JSON 형식으로 제공하세요.
+            ### Step 2: 펀더멘털 교차검증
+            - PER이 업종 평균 대비 높은데 뉴스가 긍정적이면: 성장 프리미엄이 정당한지 판단
+            - PER이 낮은데 뉴스가 부정적이면: 가치 함정(value trap)인지 판단
+            - 52주 고가 대비 현재 위치를 뉴스 맥락과 연결
 
-            응답 JSON 구조:
+            ### Step 3: 신뢰도 교정 (매우 중요)
+            confidence는 다음 기준으로 산출하세요:
+            - 80~100: 뉴스 방향이 일관되고, 거시지표와 일치하며, 구체적 촉매(실적발표, 정책결정)가 확인된 경우
+            - 60~79: 뉴스 방향이 대체로 일관되지만, 일부 반대 시그널 존재
+            - 40~59: 호재/악재가 혼재하거나 불확실성이 높은 경우 (기본값으로 남용 금지)
+            - 20~39: 데이터 부족하거나 상충하는 시그널이 많은 경우
+            - 0~19: 판단 근거가 거의 없는 경우
+            ※ 50은 "모르겠다"가 아닙니다. 정말로 호재/악재가 균형을 이룰 때만 사용하세요.
+
+            ## 작성 원칙
+            - reasons 각 항목은 "사건 → 영향 → 근거" 구조로 작성
+            - 추상적 표현("불확실성 존재") 대신 구체적 표현("미중 관세 25% 시행일 4/15 앞두고 불확실성")
+            - 투자 권유 문구는 절대 포함하지 마세요
+
+            ## 응답 JSON 구조
             {
               "valuation": "UNDERVALUED|FAIR|OVERVALUED",
               "direction": "UP|DOWN|SIDEWAYS",
-              "confidence": 0~100 사이 정수,
-              "reasons": ["뉴스 기반 분석 근거 1 (구체적 사건과 영향)", "근거 2 (시장 흐름 해석)", "근거 3 (향후 주목할 포인트)"]
+              "confidence": 0~100 사이 정수 (위 교정 기준 엄격 적용),
+              "reasons": [
+                "[핵심] 가장 강력한 방향성 근거 (구체적 사건 + 수치 + 영향 경로)",
+                "[보조] 방향성을 지지하는 추가 근거 (뉴스 흐름 + 시장 심리)",
+                "[리스크/기회] 반대 방향 가능성 또는 향후 주시 포인트 (날짜/이벤트 명시)"
+              ]
             }
             """;
 
@@ -78,22 +107,30 @@ public class OpenAiPromptBuilder {
             아래에 제공되는 시장 지수, 거시경제 지표, 최근 뉴스 헤드라인을 종합 분석하여
             오늘의 시장 상황을 섹션별로 구조화하여 요약해주세요.
 
-            작성 원칙:
-            1. 각 섹션은 2~3문장으로 핵심만 간결하게
-            2. 전문 용어 사용 시 괄호 안에 쉬운 설명 추가
-            3. 투자 권유 문구는 절대 포함하지 마세요
-            4. 시장 분위기는 반드시 POSITIVE, NEGATIVE, NEUTRAL 중 하나
+            ## 분석 프레임워크
+            1. 시장 지수 변동폭과 방향을 먼저 확인
+            2. 거시경제 지표 중 전일 대비 변화가 큰 항목을 식별
+            3. 뉴스에서 시장 방향과 일치/불일치하는 시그널을 추출
+            4. 위 3가지를 종합하여 "오늘 시장을 움직이는 가장 큰 요인 1가지"를 식별
 
-            응답은 반드시 아래 JSON 형식으로 제공하세요.
+            ## 작성 원칙
+            - 각 섹션은 2~3문장으로 핵심만 간결하게
+            - 전문 용어 사용 시 괄호 안에 쉬운 설명 추가
+            - overview 첫 문장에 "오늘 시장을 움직이는 핵심 요인"을 명시
+            - macro에 실제 수치를 인용하며 "그래서 어떤 영향인지" 연결
+            - news에서 개별 뉴스 나열 대신 뉴스들의 공통 시그널을 추출
+            - tip은 구체적 행동 가능한 포인트 (예: "오늘 발표되는 XX지표에 주목")
+            - 투자 권유 문구는 절대 포함하지 마세요
+            - 시장 분위기는 반드시 POSITIVE, NEGATIVE, NEUTRAL 중 하나
 
-            응답 JSON 구조:
+            ## 응답 JSON 구조
             {
               "sentiment": "POSITIVE|NEGATIVE|NEUTRAL",
               "sentimentLabel": "시장 분위기를 한마디로 (예: 관망세, 상승 랠리, 조정 국면)",
-              "overview": "현재 시장 전체 분위기 요약 (2~3문장)",
-              "macro": "거시경제 지표(금리, 환율, VIX 등)의 영향 분석 (2~3문장)",
-              "news": "최근 뉴스에서 주목할 핵심 이슈 (2~3문장)",
-              "tip": "초보 투자자가 오늘 주목해야 할 포인트 (1~2문장)"
+              "overview": "현재 시장 전체 분위기 요약 (2~3문장, 첫 문장은 핵심 요인)",
+              "macro": "거시경제 지표의 영향 분석 (2~3문장, 실제 수치 인용 + 영향 연결)",
+              "news": "뉴스에서 추출한 핵심 시그널 (2~3문장, 공통 방향성 파악)",
+              "tip": "오늘 주목 포인트 (1~2문장, 구체적 이벤트/지표/시간대 언급)"
             }
             """;
 
@@ -149,34 +186,44 @@ public class OpenAiPromptBuilder {
             """;
 
     private static final String SENTIMENT_SYSTEM_PROMPT = """
-            당신은 금융 뉴스 분석 전문가입니다. 다음 뉴스 제목들을 분석하세요.
+            당신은 금융 뉴스 분석 전문가입니다. 다음 뉴스 제목과 본문 요약을 분석하세요.
+            제목 아래에 "요약:" 이 있으면 본문 내용을 참고하여 더 정확한 분석을 하세요.
 
-            각 항목에 대해:
-            1. 주식/증권 시장과 관련된 뉴스인지 판단 (stockRelated: true/false)
-               - 개별 종목, 업종, 주가, 실적, IPO, 배당, 공시, 증시, 투자 등은 true
-               - 부동산, 정치, 사회, 스포츠, 날씨 등 주식과 무관하면 false
-            2. 주식 투자 관점 감성 분류 (POSITIVE/NEGATIVE/NEUTRAL)
-            3. 감성 신뢰도 (0.0~1.0)
-            4. 관련 종목별 영향 분석 (stockImpacts 배열):
-               - name: 종목명 (한국 상장 종목명 또는 미국 티커)
-               - impact: 영향 유형
-                 - DIRECT: 뉴스의 주체 종목 (예: "삼성전자 실적 발표" → 삼성전자는 DIRECT)
-                 - INDIRECT: 간접 영향 (예: "반도체 업황 호조" → 반도체 종목들은 INDIRECT)
-                 - SUPPLY_CHAIN: 공급망 관계 (예: "NVIDIA 수요 급증" → SK하이닉스는 SUPPLY_CHAIN)
-                 - COMPETITOR: 경쟁 관계 (예: "TSMC 수율 문제" → 삼성전자 파운드리는 COMPETITOR)
-               - direction: 이 뉴스가 해당 종목에 미치는 영향 방향
-                 - POSITIVE: 호재
-                 - NEGATIVE: 악재
-                 - NEUTRAL: 중립
-               - relevance: 관련도 (0.0~1.0, DIRECT는 0.8+, INDIRECT/SUPPLY_CHAIN/COMPETITOR는 0.3~0.7)
-               - 관련 종목이 없으면 빈 배열 []
-               - 예: "TSMC 수율 문제로 삼성 파운드리 반사이익 기대"
-                 → [{"name":"TSMC","impact":"DIRECT","direction":"NEGATIVE","relevance":0.9},
-                     {"name":"삼성전자","impact":"COMPETITOR","direction":"POSITIVE","relevance":0.7}]
-            5. 제목이 영어(또는 한국어가 아닌 언어)인 경우, 자연스러운 한국어로 번역하여 titleKo에 포함
-               - 한국어 제목이면 titleKo는 null
+            ## 분석 규칙
 
-            응답 JSON 구조:
+            ### 1. 주식 관련성 판단 (stockRelated)
+            - true: 개별 종목, 업종, 주가, 실적, IPO, 배당, 공시, 증시, 투자, 금리/환율(주식 영향), M&A, 산업정책
+            - false: 부동산(단독), 정치(주식 무관), 사회, 스포츠, 날씨, 연예
+            - 애매한 경우: 주식 시장에 간접적이라도 영향이 있으면 true (예: "유가 급등" → true)
+
+            ### 2. 감성 분류 주의사항
+            - "~에도 불구하고 상승" → POSITIVE (결론 기준)
+            - "호실적이나 주가 하락" → NEGATIVE (시장 반응 기준)
+            - "~우려 해소" / "~리스크 완화" → POSITIVE (부정의 부정 = 긍정)
+            - "~전망" / "~기대" → 확정이 아니므로 score를 0.6 이하로
+            - 단순 사실 보도(인사, 일정)는 NEUTRAL
+
+            ### 3. score 기준
+            - 0.9~1.0: 확정적 사실 (실적 발표, 계약 체결, 정책 확정)
+            - 0.7~0.89: 강한 시그널 (업황 변화, 수주, 투자 발표)
+            - 0.5~0.69: 전망/기대/우려 (미확정)
+            - 0.3~0.49: 간접적 영향, 불확실한 해석
+
+            ### 4. 종목 영향 분석 (stockImpacts)
+            - name: 정확한 상장 종목명 또는 미국 티커. 추측하지 말 것.
+            - impact 유형:
+              - DIRECT: 뉴스의 주체 종목
+              - INDIRECT: 업종 전체 영향으로 인한 간접 수혜/피해
+              - SUPPLY_CHAIN: 공급망 상하류 관계
+              - COMPETITOR: 경쟁사 반사이익/피해
+            - direction: 해당 종목 관점에서의 방향 (경쟁사 악재 = 해당 종목 POSITIVE 가능)
+            - relevance: DIRECT 0.8+, INDIRECT 0.4~0.7, SUPPLY_CHAIN 0.5~0.8, COMPETITOR 0.3~0.6
+            - 확실하지 않은 종목은 포함하지 마세요
+
+            ### 5. 번역
+            제목이 한국어가 아닌 경우 자연스러운 한국어로 번역하여 titleKo에 포함. 한국어 제목이면 null.
+
+            ## 응답 JSON
             {
               "results": [
                 {
@@ -198,7 +245,8 @@ public class OpenAiPromptBuilder {
                                      List<MacroIndicatorEntity> macroIndicators,
                                      List<String> recentNewsTitles,
                                      List<String> globalEventSummaries,
-                                     StockFinancialsResponse financials) {
+                                     StockFinancialsResponse financials,
+                                     StockPriceResponse priceData) {
         boolean isOverseas = isOverseasStock(stockCode);
         StringBuilder sb = new StringBuilder();
         if (isOverseas) {
@@ -209,6 +257,7 @@ public class OpenAiPromptBuilder {
             sb.append(String.format("[%s (%s)] 뉴스 기반 종목 분석을 요청합니다.\n\n", stockName, stockCode));
         }
 
+        appendPriceSection(sb, priceData, isOverseas);
         appendFundamentalsSection(sb, financials);
 
         sb.append("\n### 거시경제 지표 (현재 경제 환경)\n");
@@ -252,7 +301,8 @@ public class OpenAiPromptBuilder {
                                          Double sentimentAvg,
                                          List<MacroIndicatorEntity> macroIndicators,
                                          StockFinancialsResponse financials,
-                                         List<String> recentNewsTitles) {
+                                         List<String> recentNewsTitles,
+                                         StockPriceResponse priceData) {
         boolean isOverseas = isOverseasStock(stockCode);
         String periodLabel = "1W".equals(period) ? "향후 1주일" : "내일(다음 거래일)";
 
@@ -265,6 +315,7 @@ public class OpenAiPromptBuilder {
             sb.append(String.format("[%s (%s)] %s 기업 가치 분석을 요청합니다.\n\n", stockName, stockCode, periodLabel));
         }
 
+        appendPriceSection(sb, priceData, isOverseas);
         appendFundamentalsSection(sb, financials);
 
         sb.append("\n### 최근 관련 뉴스 (업황 맥락 파악용)\n");
@@ -308,6 +359,21 @@ public class OpenAiPromptBuilder {
         StringBuilder sb = new StringBuilder();
         for (int i = 0; i < newsTitles.size(); i++) {
             sb.append(String.format("%d. %s\n", i + 1, newsTitles.get(i)));
+        }
+        return sb.toString();
+    }
+
+    /**
+     * 제목과 본문 snippet을 함께 포함한 감성분석 프롬프트를 생성한다.
+     * snippet이 null이거나 비어있으면 해당 항목은 제목만 표시한다.
+     */
+    public String buildSentimentPromptWithContent(List<String> titles, List<String> contentSnippets) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < titles.size(); i++) {
+            sb.append(String.format("%d. %s\n", i + 1, titles.get(i)));
+            if (i < contentSnippets.size() && contentSnippets.get(i) != null && !contentSnippets.get(i).isBlank()) {
+                sb.append(String.format("   요약: %s\n", contentSnippets.get(i)));
+            }
         }
         return sb.toString();
     }
@@ -492,6 +558,29 @@ public class OpenAiPromptBuilder {
 
     private boolean isOverseasStock(String stockCode) {
         return stockCode != null && !stockCode.matches("\\d{6}");
+    }
+
+    private void appendPriceSection(StringBuilder sb, StockPriceResponse priceData, boolean isOverseas) {
+        if (priceData == null) {
+            return;
+        }
+        sb.append("### 현재 주가 정보\n");
+        if (isOverseas) {
+            sb.append(String.format("- 현재가: $%,.2f\n", priceData.currentPrice()));
+        } else {
+            sb.append(String.format("- 현재가: %,d원\n", priceData.currentPrice().longValue()));
+        }
+        String direction = priceData.changeAmount().signum() >= 0 ? "상승" : "하락";
+        sb.append(String.format("- 전일대비: %s %s (%.2f%%)\n",
+                direction,
+                isOverseas
+                        ? String.format("$%.2f", priceData.changeAmount().abs())
+                        : String.format("%,d원", priceData.changeAmount().abs().longValue()),
+                priceData.changeRate()));
+        if (priceData.volume() > 0) {
+            sb.append(String.format("- 거래량: %,d\n", priceData.volume()));
+        }
+        sb.append("\n");
     }
 
     private void appendFundamentalsSection(StringBuilder sb, StockFinancialsResponse financials) {

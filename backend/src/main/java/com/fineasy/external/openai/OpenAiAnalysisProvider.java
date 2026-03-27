@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fineasy.dto.response.AnalysisReportResponse;
 import com.fineasy.dto.response.PredictionResponse;
 import com.fineasy.dto.response.StockFinancialsResponse;
+import com.fineasy.dto.response.StockPriceResponse;
 import com.fineasy.entity.*;
 import com.fineasy.repository.NewsStockTagRepository;
 import com.fineasy.service.AiAnalysisProvider;
@@ -27,6 +28,7 @@ import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
 import java.util.*;
+import java.util.stream.Collectors;
 
 @Component
 @Primary
@@ -92,18 +94,19 @@ public class OpenAiAnalysisProvider implements AiAnalysisProvider {
 
         StockEntity stock = stockService.getStockEntityByCode(stockCode);
         StockFinancialsResponse financials = fetchFinancialsSafely(stockCode);
+        StockPriceResponse priceData = fetchPriceDataSafely(stockCode, stock.getStockName());
         List<MacroIndicatorEntity> macroIndicators = macroService.getLatestIndicatorEntities();
         List<String> globalEventSummaries = fetchGlobalEventSummaries();
 
         // RAG: semantic search for relevant news instead of simple keyword/tag matching
-        List<String> recentNewsTitles = fetchSemanticNews(stock.getStockName(), stockCode, 15);
+        List<String> recentNewsTitles = fetchSemanticNews(stock.getStockName(), stockCode, stock, 15);
 
-        // Ontology: inject sector domain knowledge
-        String ontologyContext = financeOntology.buildOntologyContext(stockCode, stock.getSector());
+        // Ontology: inject sector domain knowledge with actual macro values
+        String ontologyContext = financeOntology.buildOntologyContext(stockCode, stock.getSector(), macroIndicators);
 
         String userPrompt = promptBuilder.buildReportPrompt(
                 stock.getStockName(), stockCode, macroIndicators,
-                recentNewsTitles, globalEventSummaries, financials);
+                recentNewsTitles, globalEventSummaries, financials, priceData);
 
         // Append ontology context to user prompt
         if (!ontologyContext.isEmpty()) {
@@ -126,15 +129,17 @@ public class OpenAiAnalysisProvider implements AiAnalysisProvider {
         Double sentimentAvg = newsService.getAverageSentimentScore(stockCode, 20);
         List<MacroIndicatorEntity> macroIndicators = macroService.getLatestIndicatorEntities();
         StockFinancialsResponse financials = fetchFinancialsSafely(stockCode);
+        StockPriceResponse priceData = fetchPriceDataSafely(stockCode, stock.getStockName());
 
         // RAG: semantic search for relevant news
-        List<String> recentNewsTitles = fetchSemanticNews(stock.getStockName(), stockCode, 15);
+        List<String> recentNewsTitles = fetchSemanticNews(stock.getStockName(), stockCode, stock, 15);
 
-        // Ontology context
-        String ontologyContext = financeOntology.buildOntologyContext(stockCode, stock.getSector());
+        // Ontology context with actual macro values
+        String ontologyContext = financeOntology.buildOntologyContext(stockCode, stock.getSector(), macroIndicators);
 
         String userPrompt = promptBuilder.buildPredictionPrompt(
-                stock.getStockName(), stockCode, period, sentimentAvg, macroIndicators, financials, recentNewsTitles);
+                stock.getStockName(), stockCode, period, sentimentAvg, macroIndicators, financials,
+                recentNewsTitles, priceData);
 
         if (!ontologyContext.isEmpty()) {
             userPrompt = userPrompt + "\n" + ontologyContext;
@@ -167,49 +172,60 @@ public class OpenAiAnalysisProvider implements AiAnalysisProvider {
     }
 
     /**
-     * Graph-enhanced RAG news retrieval:
-     * 1. Direct tagged news with impact metadata (from NewsStockTagEntity)
-     * 2. Related stocks' news via relationship graph (multi-hop)
-     * 3. Semantic search to fill remaining slots
+     * Graph-enhanced RAG news retrieval with weighted ranking:
+     * 1. Direct tagged news with impact metadata (weight: 1.0)
+     * 2. Supply chain / competitor news (weight: 0.7)
+     * 3. Related stocks' news via graph (weight: 0.5)
+     * 4. Semantic search to fill remaining (weight: 0.4)
      * Falls back to keyword-based search if all else fails.
+     *
+     * Output format includes impact metadata for richer AI context:
+     * "[DIRECT/POSITIVE] 뉴스 제목" instead of plain titles.
      */
-    private List<String> fetchSemanticNews(String stockName, String stockCode, int limit) {
-        List<String> result = new ArrayList<>();
+    private List<String> fetchSemanticNews(String stockName, String stockCode, StockEntity stock, int limit) {
+        // Weighted news entries: higher weight = more important for analysis
+        List<WeightedNews> weightedResult = new ArrayList<>();
         LocalDateTime since = LocalDateTime.now().minusDays(7);
 
         try {
-            // Step 1: Direct tagged news with impact context
+            // Step 1: Direct tagged news (highest priority, weight 1.0)
             var directTags = newsStockTagRepository.findByStockCodeAndImpactType(
                     stockCode, com.fineasy.entity.ImpactType.DIRECT, since,
                     org.springframework.data.domain.PageRequest.of(0, 8));
 
             for (var tag : directTags) {
-                String prefix = tag.getImpactDirection() != null
-                        ? "[" + tag.getImpactDirection() + "] "
-                        : "";
-                result.add(prefix + tag.getNewsArticle().getTitle());
+                String direction = tag.getImpactDirection() != null
+                        ? tag.getImpactDirection().name() : "NEUTRAL";
+                double relevance = tag.getRelevanceScore() != null ? tag.getRelevanceScore() : 0.8;
+                String formatted = String.format("[직접영향/%s/관련도%.0f%%] %s",
+                        directionLabel(direction), relevance * 100, tag.getNewsArticle().getTitle());
+                weightedResult.add(new WeightedNews(formatted, 1.0 * relevance, tag.getNewsArticle().getTitle()));
             }
 
-            // Step 2: Supply chain / competitor news from relationship graph
-            if (result.size() < limit) {
+            // Step 2: Supply chain / competitor / indirect news (weight 0.7)
+            if (weightedResult.size() < limit) {
                 var relatedTags = newsStockTagRepository.findByStockCodeAndImpactTypeIn(
                         stockCode,
                         List.of(com.fineasy.entity.ImpactType.SUPPLY_CHAIN,
                                 com.fineasy.entity.ImpactType.COMPETITOR,
                                 com.fineasy.entity.ImpactType.INDIRECT),
                         since,
-                        org.springframework.data.domain.PageRequest.of(0, 4));
+                        org.springframework.data.domain.PageRequest.of(0, 6));
 
                 for (var tag : relatedTags) {
-                    String prefix = "[" + tag.getImpactType() + "] ";
-                    result.add(prefix + tag.getNewsArticle().getTitle());
+                    String typeLabel = impactTypeLabel(tag.getImpactType().name());
+                    String direction = tag.getImpactDirection() != null
+                            ? tag.getImpactDirection().name() : "NEUTRAL";
+                    double relevance = tag.getRelevanceScore() != null ? tag.getRelevanceScore() : 0.5;
+                    String formatted = String.format("[%s/%s] %s",
+                            typeLabel, directionLabel(direction), tag.getNewsArticle().getTitle());
+                    weightedResult.add(new WeightedNews(formatted, 0.7 * relevance, tag.getNewsArticle().getTitle()));
                 }
             }
 
-            // Step 3: News from graph-related stocks (multi-hop)
-            if (result.size() < limit) {
+            // Step 3: News from graph-related stocks (weight 0.5)
+            if (weightedResult.size() < limit) {
                 try {
-                    StockEntity stock = stockService.getStockEntityByCode(stockCode);
                     List<Long> relatedIds = stockRelationInferenceService.findRelatedStockIds(
                             stock.getId(), 2, 0.5);
 
@@ -227,8 +243,9 @@ public class OpenAiAnalysisProvider implements AiAnalysisProvider {
 
                         if (!relatedCodes.isEmpty()) {
                             var relatedNews = newsService.getRecentNewsByStockCodes(
-                                    relatedCodes, limit - result.size());
-                            relatedNews.forEach(title -> result.add("[관련종목] " + title));
+                                    relatedCodes, limit - weightedResult.size());
+                            relatedNews.forEach(title ->
+                                    weightedResult.add(new WeightedNews("[관련종목] " + title, 0.5, title)));
                         }
                     }
                 } catch (Exception e) {
@@ -236,30 +253,36 @@ public class OpenAiAnalysisProvider implements AiAnalysisProvider {
                 }
             }
 
-            // Step 4: Fill remaining with semantic search
-            if (result.size() < limit) {
-                String query = stockName + " " + stockCode;
+            // Step 4: Semantic search (weight 0.4)
+            if (weightedResult.size() < limit) {
+                String sectorKeywords = financeOntology.getSectorKeywords(stockCode, stock.getSector());
+                String query = stockName + " " + stockCode + (sectorKeywords != null ? " " + sectorKeywords : "");
                 var semanticResults = embeddingService.searchSimilarNews(
-                        query, limit - result.size(), since);
+                        query, limit - weightedResult.size(), since);
 
                 if (semanticResults != null) {
-                    Set<String> existingTitles = new HashSet<>(result);
+                    Set<String> existingTitles = weightedResult.stream()
+                            .map(WeightedNews::rawTitle).collect(java.util.stream.Collectors.toSet());
                     for (var article : semanticResults) {
                         String title = article.getTitle();
-                        if (!existingTitles.contains(title)
-                                && !existingTitles.contains("[POSITIVE] " + title)
-                                && !existingTitles.contains("[NEGATIVE] " + title)
-                                && !existingTitles.contains("[NEUTRAL] " + title)) {
-                            result.add(title);
+                        if (!existingTitles.contains(title)) {
+                            weightedResult.add(new WeightedNews(title, 0.4, title));
+                            existingTitles.add(title);
                         }
                     }
                 }
             }
 
-            if (result.size() >= 5) {
+            if (weightedResult.size() >= 5) {
+                // Sort by weight descending, then limit
+                weightedResult.sort((a, b) -> Double.compare(b.weight(), a.weight()));
+                List<String> sorted = weightedResult.stream()
+                        .limit(limit)
+                        .map(WeightedNews::formattedTitle)
+                        .toList();
                 log.debug("Graph+RAG: found {} articles for {} (direct={}, total={})",
-                        result.size(), stockCode, directTags.size(), result.size());
-                return result.stream().limit(limit).toList();
+                        sorted.size(), stockCode, directTags.size(), weightedResult.size());
+                return sorted;
             }
         } catch (Exception e) {
             log.debug("Graph+RAG search failed for {}, falling back to keyword: {}", stockCode, e.getMessage());
@@ -269,11 +292,39 @@ public class OpenAiAnalysisProvider implements AiAnalysisProvider {
         return newsService.getRecentNewsTitles(stockCode, limit);
     }
 
+    private record WeightedNews(String formattedTitle, double weight, String rawTitle) {}
+
+    private String directionLabel(String direction) {
+        return switch (direction) {
+            case "POSITIVE" -> "호재";
+            case "NEGATIVE" -> "악재";
+            default -> "중립";
+        };
+    }
+
+    private String impactTypeLabel(String impactType) {
+        return switch (impactType) {
+            case "SUPPLY_CHAIN" -> "공급망";
+            case "COMPETITOR" -> "경쟁사";
+            case "INDIRECT" -> "간접영향";
+            default -> impactType;
+        };
+    }
+
     private StockFinancialsResponse fetchFinancialsSafely(String stockCode) {
         try {
             return stockDataProvider.getFinancials(stockCode);
         } catch (Exception e) {
             log.warn("Failed to fetch financials for stock {}: {}", stockCode, e.getMessage());
+            return null;
+        }
+    }
+
+    private StockPriceResponse fetchPriceDataSafely(String stockCode, String stockName) {
+        try {
+            return stockDataProvider.getStockPriceDetail(stockCode, stockName);
+        } catch (Exception e) {
+            log.warn("Failed to fetch price data for stock {}: {}", stockCode, e.getMessage());
             return null;
         }
     }

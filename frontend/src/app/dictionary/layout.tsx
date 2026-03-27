@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
-import { createPageMetadata } from '@/lib/seo';
+import { createPageMetadata, SITE_URL } from '@/lib/seo';
+import { BreadcrumbJsonLd } from '@/components/seo/json-ld';
 
 export const metadata: Metadata = createPageMetadata({
   title: '금융 용어 사전 - PER PBR 뜻, 주식 용어 정리, 한국은행 700선',
@@ -13,5 +14,15 @@ export default function DictionaryLayout({
 }: {
   children: React.ReactNode;
 }) {
-  return children;
+  return (
+    <>
+      <BreadcrumbJsonLd
+        items={[
+          { name: '홈', url: SITE_URL },
+          { name: '금융 용어 사전', url: `${SITE_URL}/dictionary` },
+        ]}
+      />
+      {children}
+    </>
+  );
 }

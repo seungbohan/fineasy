@@ -142,9 +142,10 @@ class KeywordSentimentAnalyzerTest {
     class MixedSentiment {
 
         @Test
-        @DisplayName("Equal positive and negative keywords yield NEUTRAL")
+        @DisplayName("Equal-weight positive and negative keywords yield NEUTRAL")
         void balancedSentiment() {
-            SentimentResult result = analyzer.analyze("상승 전망이지만 하락 가능성도 있다");
+            // 상승(1.0) + 호조(1.0) vs 하락(1.0) + 약세(1.0) = balanced
+            SentimentResult result = analyzer.analyze("상승 호조이지만 하락 약세도 있다");
 
             assertEquals(Sentiment.NEUTRAL, result.sentiment());
             assertEquals(0.5, result.score(), 0.01);

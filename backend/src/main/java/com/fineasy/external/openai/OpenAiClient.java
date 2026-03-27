@@ -31,17 +31,21 @@ public class OpenAiClient {
     }
 
     public String chat(String systemPrompt, String userPrompt) {
-        return chat(systemPrompt, userPrompt, 0);
+        return chat(systemPrompt, userPrompt, 0, 0.7);
     }
 
     public String chat(String systemPrompt, String userPrompt, int maxTokens) {
+        return chat(systemPrompt, userPrompt, maxTokens, 0.7);
+    }
+
+    public String chat(String systemPrompt, String userPrompt, int maxTokens, double temperature) {
         Map<String, Object> requestBody = new java.util.HashMap<>(Map.of(
                 "model", config.getModel(),
                 "messages", List.of(
                         Map.of("role", "system", "content", systemPrompt),
                         Map.of("role", "user", "content", userPrompt)
                 ),
-                "temperature", 0.7,
+                "temperature", temperature,
                 "response_format", Map.of("type", "json_object")
         ));
 
@@ -49,8 +53,8 @@ public class OpenAiClient {
             requestBody.put("max_tokens", maxTokens);
         }
 
-        log.debug("Calling OpenAI API with model: {}, max_tokens: {}",
-                config.getModel(), maxTokens > 0 ? maxTokens : "unlimited");
+        log.debug("Calling OpenAI API with model: {}, temp: {}, max_tokens: {}",
+                config.getModel(), temperature, maxTokens > 0 ? maxTokens : "unlimited");
 
         return executeRequest(requestBody);
     }

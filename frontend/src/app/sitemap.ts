@@ -5,17 +5,23 @@ const SITE_URL = 'https://fineasy.co.kr';
 // Force dynamic generation at runtime, not build time
 export const dynamic = 'force-dynamic';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://backend:8080/api/v1';
+const API_URL = process.env.INTERNAL_API_URL || process.env.NEXT_PUBLIC_API_URL || 'http://backend:8080/api/v1';
 
 async function fetchJson<T>(path: string): Promise<T | null> {
   try {
+    console.log(`[Sitemap] Fetching: ${API_URL}${path}`);
     const res = await fetch(`${API_URL}${path}`, {
       signal: AbortSignal.timeout(10000),
     });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      console.error(`[Sitemap] Failed: ${res.status} for ${path}`);
+      return null;
+    }
     const json = await res.json();
+    console.log(`[Sitemap] Success: ${path}, entries: ${Array.isArray(json.data ?? json) ? (json.data ?? json).length : 'object'}`);
     return json.data ?? json;
-  } catch {
+  } catch (error) {
+    console.error(`[Sitemap] Error fetching ${path}:`, error);
     return null;
   }
 }

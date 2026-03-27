@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import { createPageMetadata, SITE_URL } from '@/lib/seo';
-import { BreadcrumbJsonLd } from '@/components/seo/json-ld';
+import { BreadcrumbJsonLd, ArticleJsonLd } from '@/components/seo/json-ld';
 import LearnArticlePage from './learn-article-client';
 
 const API_URL = process.env.INTERNAL_API_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1';
@@ -62,6 +62,13 @@ export default async function Page({ params }: Props) {
           { name: article?.title || '학습 콘텐츠', url: `${SITE_URL}/learn/${articleId}` },
         ]}
       />
+      {article && (
+        <ArticleJsonLd
+          title={article.title}
+          description={article.content.replace(/[#*\n]/g, ' ').slice(0, 150)}
+          url={`${SITE_URL}/learn/${articleId}`}
+        />
+      )}
       {article && (
         <section className="sr-only" aria-label="학습 콘텐츠">
           <h1>{article.title}</h1>

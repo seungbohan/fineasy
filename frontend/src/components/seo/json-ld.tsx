@@ -138,10 +138,24 @@ export function ArticleJsonLd({
         headline: title,
         description,
         url,
+        image: `${SITE_URL}/opengraph-image`,
+        mainEntityOfPage: {
+          '@type': 'WebPage',
+          '@id': url,
+        },
+        author: {
+          '@type': 'Organization',
+          name: SITE_NAME,
+          url: SITE_URL,
+        },
         publisher: {
           '@type': 'Organization',
           name: SITE_NAME,
           url: SITE_URL,
+          logo: {
+            '@type': 'ImageObject',
+            url: `${SITE_URL}/logo.png`,
+          },
         },
         inLanguage: 'ko',
         ...(datePublished && { datePublished }),

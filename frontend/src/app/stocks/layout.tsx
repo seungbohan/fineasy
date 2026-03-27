@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
-import { createPageMetadata } from '@/lib/seo';
+import { createPageMetadata, SITE_URL } from '@/lib/seo';
+import { BreadcrumbJsonLd } from '@/components/seo/json-ld';
 
 export const metadata: Metadata = createPageMetadata({
   title: '인기 종목 랭킹 - 거래대금, 거래량, 상승률, 하락률',
@@ -13,5 +14,15 @@ export default function StocksLayout({
 }: {
   children: React.ReactNode;
 }) {
-  return children;
+  return (
+    <>
+      <BreadcrumbJsonLd
+        items={[
+          { name: '홈', url: SITE_URL },
+          { name: '인기 종목', url: `${SITE_URL}/stocks` },
+        ]}
+      />
+      {children}
+    </>
+  );
 }

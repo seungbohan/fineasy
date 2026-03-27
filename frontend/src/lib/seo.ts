@@ -5,7 +5,7 @@ export const SITE_DESCRIPTION =
   '주식 초보도 쉽게 시작하는 AI 종목 분석, 금융 용어 사전(한국은행 700선), 실시간 시세, 투자 학습. 사회초년생 재테크의 첫걸음, FinEasy에서 무료로 시작하세요.';
 export const SITE_LOCALE = 'ko_KR';
 
-export const DEFAULT_OG_IMAGE = `${SITE_URL}/og-image.png`;
+export const DEFAULT_OG_IMAGE = `${SITE_URL}/opengraph-image`;
 
 export function createCanonicalUrl(path: string): string {
   return `${SITE_URL}${path}`;

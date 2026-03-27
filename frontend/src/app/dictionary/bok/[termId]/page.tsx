@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import { createPageMetadata, SITE_URL } from '@/lib/seo';
-import { BreadcrumbJsonLd } from '@/components/seo/json-ld';
+import { BreadcrumbJsonLd, DefinedTermJsonLd } from '@/components/seo/json-ld';
 import BokTermDetailPage from './bok-term-detail-client';
 
 const API_URL = process.env.INTERNAL_API_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1';
@@ -60,6 +60,13 @@ export default async function Page({ params }: Props) {
           { name: term?.term || '한국은행 용어 상세', url: `${SITE_URL}/dictionary/bok/${termId}` },
         ]}
       />
+      {term && (
+        <DefinedTermJsonLd
+          name={term.term}
+          description={term.definition.slice(0, 200)}
+          url={`${SITE_URL}/dictionary/bok/${termId}`}
+        />
+      )}
       {term && (
         <section className="sr-only" aria-label="한국은행 용어 정보">
           <h1>{term.term}{term.englishTerm && ` (${term.englishTerm})`}</h1>

@@ -9,6 +9,7 @@ import com.fineasy.entity.StockEntity;
 import com.fineasy.external.openai.OpenAiClient;
 import com.fineasy.external.openai.OpenAiPromptBuilder;
 import com.fineasy.repository.NewsArticleRepository;
+import com.fineasy.repository.NewsStockTagRepository;
 import com.fineasy.repository.StockRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -23,8 +24,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.*;
+
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -35,6 +36,9 @@ class NewsSentimentServiceTest {
 
     @Mock
     private StockRepository stockRepository;
+
+    @Mock
+    private NewsStockTagRepository newsStockTagRepository;
 
     @Mock
     private OpenAiClient openAiClient;
@@ -55,7 +59,7 @@ class NewsSentimentServiceTest {
     void setUp() {
         objectMapper = new ObjectMapper();
         service = new NewsSentimentService(
-                newsArticleRepository, stockRepository,
+                newsArticleRepository, stockRepository, newsStockTagRepository,
                 openAiClient, promptBuilder, objectMapper,
                 openAiConfig, keywordSentimentAnalyzer
         );
@@ -163,7 +167,7 @@ class NewsSentimentServiceTest {
             StockEntity samsung = createStock("005930", "삼성전자");
             when(stockRepository.findAll()).thenReturn(List.of(samsung));
             when(promptBuilder.getSentimentSystemPrompt()).thenReturn("system");
-            when(promptBuilder.buildSentimentPrompt(any())).thenReturn("user");
+            when(promptBuilder.buildSentimentPromptWithContent(any(), any())).thenReturn("user");
 
             String aiResponse = """
                     {
@@ -173,7 +177,7 @@ class NewsSentimentServiceTest {
                       ]
                     }
                     """;
-            when(openAiClient.chat(anyString(), anyString())).thenReturn(aiResponse);
+            when(openAiClient.chat(anyString(), anyString(), anyInt(), anyDouble())).thenReturn(aiResponse);
 
             NewsArticleEntity article1 = createArticle("삼성전자 호실적 발표");
             NewsArticleEntity article2 = createArticle("삼성전자 실적 부진 우려");
@@ -191,7 +195,7 @@ class NewsSentimentServiceTest {
         void deletesNonStockRelated() {
             when(stockRepository.findAll()).thenReturn(List.of());
             when(promptBuilder.getSentimentSystemPrompt()).thenReturn("system");
-            when(promptBuilder.buildSentimentPrompt(any())).thenReturn("user");
+            when(promptBuilder.buildSentimentPromptWithContent(any(), any())).thenReturn("user");
 
             String aiResponse = """
                     {
@@ -200,7 +204,7 @@ class NewsSentimentServiceTest {
                       ]
                     }
                     """;
-            when(openAiClient.chat(anyString(), anyString())).thenReturn(aiResponse);
+            when(openAiClient.chat(anyString(), anyString(), anyInt(), anyDouble())).thenReturn(aiResponse);
 
             NewsArticleEntity article = createArticle("오늘의 날씨 전망");
             service.analyzeSentiment(new ArrayList<>(List.of(article)));
@@ -214,8 +218,8 @@ class NewsSentimentServiceTest {
             StockEntity samsung = createStock("005930", "삼성전자");
             when(stockRepository.findAll()).thenReturn(List.of(samsung));
             when(promptBuilder.getSentimentSystemPrompt()).thenReturn("system");
-            when(promptBuilder.buildSentimentPrompt(any())).thenReturn("user");
-            when(openAiClient.chat(anyString(), anyString()))
+            when(promptBuilder.buildSentimentPromptWithContent(any(), any())).thenReturn("user");
+            when(openAiClient.chat(anyString(), anyString(), anyInt(), anyDouble()))
                     .thenThrow(new RuntimeException("OpenAI API timeout"));
             when(keywordSentimentAnalyzer.analyze(anyString()))
                     .thenReturn(new KeywordSentimentAnalyzer.SentimentResult(Sentiment.POSITIVE, 0.7));
@@ -233,8 +237,8 @@ class NewsSentimentServiceTest {
             StockEntity samsung = createStock("005930", "삼성전자");
             when(stockRepository.findAll()).thenReturn(List.of(samsung));
             when(promptBuilder.getSentimentSystemPrompt()).thenReturn("system");
-            when(promptBuilder.buildSentimentPrompt(any())).thenReturn("user");
-            when(openAiClient.chat(anyString(), anyString())).thenReturn("not valid json {{{");
+            when(promptBuilder.buildSentimentPromptWithContent(any(), any())).thenReturn("user");
+            when(openAiClient.chat(anyString(), anyString(), anyInt(), anyDouble())).thenReturn("not valid json {{{");
             lenient().when(keywordSentimentAnalyzer.analyze(anyString()))
                     .thenReturn(new KeywordSentimentAnalyzer.SentimentResult(Sentiment.NEUTRAL, 0.5));
 
@@ -247,23 +251,23 @@ class NewsSentimentServiceTest {
         }
 
         @Test
-        @DisplayName("Batches articles in groups of 5")
-        void batchesIn5s() {
+        @DisplayName("Batches articles in groups of 10")
+        void batchesIn10s() {
             when(stockRepository.findAll()).thenReturn(List.of());
             when(promptBuilder.getSentimentSystemPrompt()).thenReturn("system");
-            when(promptBuilder.buildSentimentPrompt(any())).thenReturn("user");
+            when(promptBuilder.buildSentimentPromptWithContent(any(), any())).thenReturn("user");
 
             String emptyResponse = "{\"results\": []}";
-            when(openAiClient.chat(anyString(), anyString())).thenReturn(emptyResponse);
+            when(openAiClient.chat(anyString(), anyString(), anyInt(), anyDouble())).thenReturn(emptyResponse);
 
             List<NewsArticleEntity> articles = new ArrayList<>();
-            for (int i = 0; i < 7; i++) {
+            for (int i = 0; i < 15; i++) {
                 articles.add(createArticle("뉴스 " + i));
             }
 
             service.analyzeSentiment(articles);
 
-            verify(openAiClient, times(2)).chat(anyString(), anyString());
+            verify(openAiClient, times(2)).chat(anyString(), anyString(), anyInt(), anyDouble());
         }
     }
 }

@@ -17,6 +17,8 @@ import {
   DEFAULT_OG_IMAGE,
 } from '@/lib/seo';
 import { AdSenseScript } from '@/components/adsense-script';
+import { Footer } from '@/components/layout/footer';
+import Script from 'next/script';
 
 const notoSansKR = Noto_Sans_KR({
   variable: '--font-noto-sans-kr',
@@ -125,29 +127,28 @@ export default function RootLayout({
         <WebsiteJsonLd />
         <OrganizationJsonLd />
         <FinancialServiceJsonLd />
-        <script
-          async
-          src={`https://www.googletagmanager.com/gtag/js?id=G-NLYGDP45K8`}
-        />
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `
-              window.dataLayer = window.dataLayer || [];
-              function gtag(){dataLayer.push(arguments);}
-              gtag('js', new Date());
-              gtag('config', 'G-NLYGDP45K8');
-            `,
-          }}
-        />
       </head>
       <body
         className={`${notoSansKR.variable} ${geistMono.variable} antialiased`}
       >
+        <Script
+          src="https://www.googletagmanager.com/gtag/js?id=G-NLYGDP45K8"
+          strategy="afterInteractive"
+        />
+        <Script id="gtag-init" strategy="afterInteractive">
+          {`
+            window.dataLayer = window.dataLayer || [];
+            function gtag(){dataLayer.push(arguments);}
+            gtag('js', new Date());
+            gtag('config', 'G-NLYGDP45K8');
+          `}
+        </Script>
         <AdSenseScript />
         <Providers>
           <div className="flex min-h-screen flex-col">
             <Header />
             <main className="flex-1 pb-[68px] md:pb-0">{children}</main>
+            <Footer />
             <BottomNav />
           </div>
         </Providers>

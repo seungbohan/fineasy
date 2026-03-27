@@ -20,7 +20,7 @@ public class NewsSentimentService {
 
     private static final Logger log = LoggerFactory.getLogger(NewsSentimentService.class);
 
-    private static final int BATCH_SIZE = 5;
+    private static final int BATCH_SIZE = 10;
 
     private final NewsArticleRepository newsArticleRepository;
     private final StockRepository stockRepository;
@@ -147,10 +147,18 @@ public class NewsSentimentService {
                 .map(NewsArticleEntity::getTitle)
                 .toList();
 
-        String systemPrompt = promptBuilder.getSentimentSystemPrompt();
-        String userPrompt = promptBuilder.buildSentimentPrompt(titles);
+        List<String> snippets = batch.stream()
+                .map(a -> {
+                    String content = a.getContent();
+                    if (content == null || content.isBlank()) return null;
+                    return content.length() > 200 ? content.substring(0, 200) : content;
+                })
+                .toList();
 
-        String response = openAiClient.chat(systemPrompt, userPrompt);
+        String systemPrompt = promptBuilder.getSentimentSystemPrompt();
+        String userPrompt = promptBuilder.buildSentimentPromptWithContent(titles, snippets);
+
+        String response = openAiClient.chat(systemPrompt, userPrompt, 0, 0.3);
 
         try {
             JsonNode root = objectMapper.readTree(response);
@@ -198,6 +206,7 @@ public class NewsSentimentService {
                     if (stocksNode.isArray()) {
                         for (JsonNode stockName : stocksNode) {
                             String name = stockName.asText().trim();
+                            if (name.length() <= 1) continue; // Skip 1-char names
                             StockEntity entity = cache.get(name);
                             if (entity != null && !article.getTaggedStocks().contains(entity)) {
                                 article.getTaggedStocks().add(entity);
@@ -230,7 +239,7 @@ public class NewsSentimentService {
                                       Map<String, StockEntity> cache) {
         for (JsonNode impact : stockImpacts) {
             String name = impact.path("name").asText("").trim();
-            if (name.isEmpty()) continue;
+            if (name.isEmpty() || name.length() <= 1) continue; // Skip 1-char names to avoid false matches
 
             StockEntity entity = cache.get(name);
             if (entity == null) continue;
@@ -300,11 +309,23 @@ public class NewsSentimentService {
         if (title == null) return;
 
         for (Map.Entry<String, StockEntity> entry : cache.entrySet()) {
-            if (title.contains(entry.getKey())) {
-                if (!article.getTaggedStocks().contains(entry.getValue())) {
-                    article.getTaggedStocks().add(entry.getValue());
-                    // Name match defaults to DIRECT/NEUTRAL
-                    saveEnhancedTag(article, entry.getValue(),
+            String key = entry.getKey();
+            StockEntity stock = entry.getValue();
+
+            // Skip short keys to prevent false-positive tagging
+            // (e.g., ticker "S", "A", "C" matching "S&P 500", "A-rated" etc.)
+            boolean isStockCode = key.equals(stock.getStockCode());
+            if (isStockCode && key.length() < 3) {
+                continue; // 3글자 미만 종목코드는 코드 기반 매칭 스킵
+            }
+            if (!isStockCode && key.length() <= 2) {
+                continue; // 2글자 이하 종목명은 이름 기반 매칭 스킵
+            }
+
+            if (title.contains(key)) {
+                if (!article.getTaggedStocks().contains(stock)) {
+                    article.getTaggedStocks().add(stock);
+                    saveEnhancedTag(article, stock,
                             ImpactType.DIRECT, ImpactDirection.NEUTRAL, 0.5);
                 }
             }
