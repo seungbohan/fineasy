@@ -256,3 +256,36 @@ export function useSentimentTrend(stockCode: string, days = 30) {
     staleTime: 60 * 60 * 1000,
   });
 }
+
+/** Key news article with impact classification for a specific stock. */
+export interface KeyNewsArticle {
+  id: number;
+  title: string;
+  originalUrl: string;
+  sourceName: string;
+  publishedAt: string;
+  sentiment: 'POSITIVE' | 'NEGATIVE' | 'NEUTRAL';
+  sentimentScore: number;
+  impactType: 'DIRECT' | 'SUPPLY_CHAIN' | 'COMPETITOR' | 'INDIRECT';
+  impactDirection: 'POSITIVE' | 'NEGATIVE' | 'NEUTRAL';
+  relevanceScore: number;
+  taggedStocks?: { stockCode: string; stockName: string }[];
+}
+
+/**
+ * Fetch key news articles that directly affect a stock's revenue/earnings.
+ * Endpoint: GET /api/v1/stocks/{stockCode}/news/key?limit=10
+ */
+export function useStockKeyNews(stockCode: string) {
+  return useQuery<KeyNewsArticle[]>({
+    queryKey: ['news', 'key', stockCode],
+    queryFn: async () => {
+      const res = await apiClient.get<KeyNewsArticle[]>(
+        `/stocks/${stockCode}/news/key?limit=10`
+      );
+      return Array.isArray(res) ? res : [];
+    },
+    enabled: !!stockCode,
+    staleTime: 30 * 60 * 1000,
+  });
+}

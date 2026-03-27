@@ -508,9 +508,7 @@ interface FundamentalAnalysisProps {
   market: 'KRX' | 'KOSDAQ' | 'NASDAQ' | 'NYSE';
 }
 
-export function FundamentalAnalysis({ stockCode, market }: FundamentalAnalysisProps) {
-  const isOverseas = market === 'NASDAQ' || market === 'NYSE';
-
+export function FundamentalAnalysis({ stockCode }: FundamentalAnalysisProps) {
   const {
     data: history,
     isLoading: historyLoading,
@@ -522,24 +520,6 @@ export function FundamentalAnalysis({ stockCode, market }: FundamentalAnalysisPr
   } = useStockFundamentals(stockCode);
 
   const isLoading = historyLoading || fundLoading;
-
-  if (isOverseas) {
-    return (
-      <Card className="rounded-xl border-0 bg-white shadow-none">
-        <CardContent className="p-4">
-          <div className="mb-3 flex items-center gap-2">
-            <BarChart3 className="h-4 w-4 text-[#3182F6]" />
-            <h2 className="text-[15px] font-bold text-gray-900">
-              펀더멘탈 분석
-            </h2>
-          </div>
-          <p className="py-6 text-center text-sm text-gray-400">
-            국내 상장 종목만 재무 데이터를 제공합니다
-          </p>
-        </CardContent>
-      </Card>
-    );
-  }
 
   if (isLoading) {
     return <FundamentalSkeleton />;

@@ -107,4 +107,13 @@ public class StockController {
         return ResponseEntity.ok(ApiResponse.success(
                 newsService.getNewsByStockCode(stockCode, 20)));
     }
+
+    @GetMapping("/{stockCode}/news/key")
+    @Operation(summary = "Get key news that directly impacts stock revenue and earnings")
+    public ResponseEntity<ApiResponse<List<KeyNewsResponse>>> getKeyNews(
+            @PathVariable String stockCode,
+            @RequestParam(defaultValue = "10") @Min(1) int limit) {
+        return ResponseEntity.ok(ApiResponse.success(
+                newsService.getKeyNewsByStockCode(stockCode, Math.min(limit, 20))));
+    }
 }

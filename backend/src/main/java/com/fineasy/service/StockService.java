@@ -6,6 +6,7 @@ import com.fineasy.entity.StockEntity;
 import com.fineasy.entity.StockPriceEntity;
 import com.fineasy.exception.EntityNotFoundException;
 import com.fineasy.external.dart.DartFinancialService;
+import com.fineasy.external.sec.SecEdgarFundamentalsService;
 import com.fineasy.repository.StockPriceRepository;
 import com.fineasy.repository.StockRepository;
 import org.slf4j.Logger;
@@ -42,6 +43,9 @@ public class StockService {
 
     @Autowired(required = false)
     private DartFinancialService dartFinancialService;
+
+    @Autowired(required = false)
+    private SecEdgarFundamentalsService secEdgarFundamentalsService;
 
     public StockService(StockRepository stockRepository,
                         StockPriceRepository stockPriceRepository,
@@ -221,28 +225,42 @@ public class StockService {
     @Cacheable(value = "stock-fundamentals", key = "#stockCode + ':dart'", unless = "#result == null")
     @Transactional
     public DartFundamentalsResponse getDartFundamentals(String stockCode) {
-        return callDartService(stockCode, "DART fundamentals",
-                (code, name) -> dartFinancialService.getFundamentals(code, name));
+        return callFinancialService(stockCode, "fundamentals",
+                (code, name) -> dartFinancialService.getFundamentals(code, name),
+                (code, name) -> secEdgarFundamentalsService.getFundamentals(code, name));
     }
 
     @Cacheable(value = "stock-fundamentals", key = "#stockCode + ':multi'", unless = "#result == null")
     @Transactional
     public MultiYearFundamentalsResponse getMultiYearFundamentals(String stockCode) {
-        return callDartService(stockCode, "multi-year DART",
-                (code, name) -> dartFinancialService.getMultiYearFundamentals(code, name));
+        return callFinancialService(stockCode, "multi-year fundamentals",
+                (code, name) -> dartFinancialService.getMultiYearFundamentals(code, name),
+                (code, name) -> secEdgarFundamentalsService.getMultiYearFundamentals(code, name));
     }
 
-    private <T> T callDartService(String stockCode, String label,
-                                   java.util.function.BiFunction<String, String, T> dartCall) {
-        if (dartFinancialService == null) {
-            log.debug("DART financial service is not available (API key not configured)");
-            return null;
-        }
-
+    private <T> T callFinancialService(String stockCode, String label,
+                                        java.util.function.BiFunction<String, String, T> dartCall,
+                                        java.util.function.BiFunction<String, String, T> secEdgarCall) {
         StockEntity stock = getStockEntityByCode(stockCode);
 
-        if (stock.getMarket() == Market.NASDAQ || stock.getMarket() == Market.NYSE) {
-            log.debug("{} not available for overseas stock: {}", label, stockCode);
+        // Overseas stocks -> SEC EDGAR
+        if (stock.getMarket() == Market.NASDAQ || stock.getMarket() == Market.NYSE
+                || stock.getMarket() == Market.AMEX) {
+            if (secEdgarFundamentalsService == null) {
+                log.debug("SEC EDGAR fundamentals service not available for overseas stock: {}", stockCode);
+                return null;
+            }
+            try {
+                return secEdgarCall.apply(stockCode, stock.getStockName());
+            } catch (Exception e) {
+                log.error("Failed to fetch {} from SEC EDGAR for stockCode={}: {}", label, stockCode, e.getMessage());
+                return null;
+            }
+        }
+
+        // Domestic stocks -> DART
+        if (dartFinancialService == null) {
+            log.debug("DART financial service is not available (API key not configured)");
             return null;
         }
 

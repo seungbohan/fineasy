@@ -3,6 +3,7 @@ package com.fineasy.service;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fineasy.dto.response.KeyNewsResponse;
 import com.fineasy.dto.response.NewsAnalysisResponse;
 import com.fineasy.dto.response.NewsArticleResponse;
 import com.fineasy.dto.response.NewsCountResponse;
@@ -10,8 +11,10 @@ import com.fineasy.dto.response.SentimentTrendResponse;
 import com.fineasy.dto.response.StockNewsSummaryResponse;
 import com.fineasy.dto.response.WatchlistNewsResponse;
 import com.fineasy.entity.BokTermEntity;
+import com.fineasy.entity.ImpactType;
 import com.fineasy.entity.NewsArticleAnalysisEntity;
 import com.fineasy.entity.NewsArticleEntity;
+import com.fineasy.entity.NewsStockTagEntity;
 import com.fineasy.entity.Sentiment;
 import com.fineasy.exception.AiServiceUnavailableException;
 import com.fineasy.exception.EntityNotFoundException;
@@ -19,6 +22,7 @@ import com.fineasy.external.openai.OpenAiClient;
 import com.fineasy.external.openai.OpenAiPromptBuilder;
 import com.fineasy.repository.NewsArticleAnalysisRepository;
 import com.fineasy.repository.NewsArticleRepository;
+import com.fineasy.repository.NewsStockTagRepository;
 import com.fineasy.repository.StockRepository;
 import com.fineasy.dto.PageResponse;
 import org.slf4j.Logger;
@@ -60,6 +64,8 @@ public class NewsService {
 
     private final NewsArticleAnalysisRepository newsArticleAnalysisRepository;
 
+    private final NewsStockTagRepository newsStockTagRepository;
+
     private final StockRepository stockRepository;
 
     private final ObjectMapper objectMapper;
@@ -74,6 +80,7 @@ public class NewsService {
 
     public NewsService(NewsArticleRepository newsArticleRepository,
                        NewsArticleAnalysisRepository newsArticleAnalysisRepository,
+                       NewsStockTagRepository newsStockTagRepository,
                        StockRepository stockRepository,
                        ObjectMapper objectMapper,
                        @Autowired(required = false) OpenAiClient openAiClient,
@@ -82,6 +89,7 @@ public class NewsService {
                        RedisCacheHelper redisCacheHelper) {
         this.newsArticleRepository = newsArticleRepository;
         this.newsArticleAnalysisRepository = newsArticleAnalysisRepository;
+        this.newsStockTagRepository = newsStockTagRepository;
         this.stockRepository = stockRepository;
         this.objectMapper = objectMapper;
         this.openAiClient = openAiClient;
@@ -148,6 +156,64 @@ public class NewsService {
                         .findByTitleContaining(stock.getStockName(), stockCode, PageRequest.of(0, limit))
                         .stream().map(this::toResponse).toList())
                 .orElse(List.of());
+    }
+
+    public List<KeyNewsResponse> getKeyNewsByStockCode(String stockCode, int limit) {
+        // 90일 이내 뉴스 조회 (실적은 분기별이므로)
+        LocalDateTime since = LocalDateTime.now().minusDays(90);
+
+        // 모든 impactType의 태그된 뉴스를 relevance 높은 순으로 조회
+        List<NewsStockTagEntity> tags = newsStockTagRepository.findByStockCodeSince(
+                stockCode, since, PageRequest.of(0, limit * 2));
+
+        if (tags.isEmpty()) return List.of();
+
+        // 중복 뉴스 제거 + impactType 우선순위 정렬
+        // DIRECT > SUPPLY_CHAIN > COMPETITOR > INDIRECT
+        Map<Long, NewsStockTagEntity> uniqueNews = new LinkedHashMap<>();
+        tags.stream()
+                .sorted(Comparator.comparingInt(
+                                (NewsStockTagEntity t) -> getImpactPriority(t.getImpactType()))
+                        .thenComparing(t -> t.getRelevanceScore() != null ? -t.getRelevanceScore() : 0))
+                .forEach(tag -> uniqueNews.putIfAbsent(tag.getNewsArticle().getId(), tag));
+
+        return uniqueNews.values().stream()
+                .limit(limit)
+                .map(this::toKeyNewsResponse)
+                .toList();
+    }
+
+    private int getImpactPriority(ImpactType type) {
+        if (type == null) return 4;
+        return switch (type) {
+            case DIRECT -> 0;
+            case SUPPLY_CHAIN -> 1;
+            case COMPETITOR -> 2;
+            case INDIRECT -> 3;
+        };
+    }
+
+    private KeyNewsResponse toKeyNewsResponse(NewsStockTagEntity tag) {
+        NewsArticleEntity article = tag.getNewsArticle();
+        List<NewsArticleResponse.TaggedStockInfo> taggedStocks = article.getTaggedStocks() != null
+                ? article.getTaggedStocks().stream()
+                    .map(s -> new NewsArticleResponse.TaggedStockInfo(s.getStockCode(), s.getStockName()))
+                    .toList()
+                : List.of();
+
+        return new KeyNewsResponse(
+                article.getId(),
+                article.getTitle(),
+                article.getOriginalUrl(),
+                article.getSourceName(),
+                article.getPublishedAt(),
+                article.getSentiment(),
+                article.getSentimentScore() != null ? article.getSentimentScore() : 0.5,
+                tag.getImpactType(),
+                tag.getImpactDirection(),
+                tag.getRelevanceScore() != null ? tag.getRelevanceScore() : 0.0,
+                taggedStocks
+        );
     }
 
     public List<String> getRecentNewsTitles(String stockCode, int limit) {

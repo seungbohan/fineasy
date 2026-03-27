@@ -39,6 +39,7 @@ import { PostList } from '@/components/community/post-list';
 import { StockChart } from '@/components/stocks/stock-chart';
 import { CompanyAnalysisCard } from '@/components/stocks/company-analysis-card';
 import { FundamentalAnalysis } from '@/components/stocks/fundamental-analysis';
+import { KeyNewsCard } from '@/components/stocks/key-news-card';
 import { useStockDetail } from '@/hooks/use-stocks';
 import { useStockNews, useNewsAnalysis, useStockNewsSummary, useSentimentTrend } from '@/hooks/use-news';
 import { useAnalysisReport } from '@/hooks/use-analysis';
@@ -469,6 +470,14 @@ function InfoTab({
       <CompanyAnalysisCard stockCode={stockCode} stock={stock} />
 
       <FundamentalAnalysis stockCode={stockCode} market={stock.market} />
+
+      <KeyNewsCard
+        stockCode={stockCode}
+        onNewsClick={(newsId) => {
+          setSelectedNewsId(newsId);
+          setSheetOpen(true);
+        }}
+      />
 
       {report?.technicalSignals && (
         <Card className="rounded-xl border-0 bg-white shadow-none">
