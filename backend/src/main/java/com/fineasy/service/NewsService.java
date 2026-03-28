@@ -293,6 +293,8 @@ public class NewsService {
         return new NewsCountResponse(count, since);
     }
 
+    private static final int MAX_NEWS_FOR_SUMMARY = 15;
+
     public StockNewsSummaryResponse getStockNewsSummary(String stockCode) {
         String cacheKey = STOCK_SUMMARY_CACHE_PREFIX + stockCode;
 
@@ -303,9 +305,22 @@ public class NewsService {
             return cached;
         }
 
-        LocalDateTime since = LocalDateTime.now().minusHours(24);
-        List<NewsArticleEntity> recentNews = newsArticleRepository
-                .findByStockCodeSince(stockCode, since);
+        // Use impact-ranked news (relevanceScore DESC) instead of plain time-ordered
+        LocalDateTime since = LocalDateTime.now().minusDays(3);
+        List<NewsStockTagEntity> impactTags = newsStockTagRepository
+                .findByStockCodeSince(stockCode, since,
+                        org.springframework.data.domain.PageRequest.of(0, MAX_NEWS_FOR_SUMMARY));
+
+        List<NewsArticleEntity> recentNews = impactTags.stream()
+                .map(NewsStockTagEntity::getNewsArticle)
+                .distinct()
+                .toList();
+
+        if (recentNews.isEmpty()) {
+            // Fallback: try basic stock code search for 24h
+            recentNews = newsArticleRepository
+                    .findByStockCodeSince(stockCode, LocalDateTime.now().minusHours(24));
+        }
 
         if (recentNews.isEmpty()) {
             StockNewsSummaryResponse empty = StockNewsSummaryResponse.empty(stockCode);
@@ -319,9 +334,25 @@ public class NewsService {
         }
 
         try {
-            List<String> titles = recentNews.stream()
-                    .map(NewsArticleEntity::getTitle)
-                    .toList();
+            // Build titles with impact context for better AI summarization
+            List<String> titles = new java.util.ArrayList<>();
+            for (int i = 0; i < recentNews.size(); i++) {
+                NewsArticleEntity article = recentNews.get(i);
+                // Find impact info if available
+                int idx = i;
+                String prefix = impactTags.stream()
+                        .filter(t -> t.getNewsArticle().getId().equals(article.getId()))
+                        .findFirst()
+                        .map(t -> {
+                            String dir = t.getImpactDirection() != null ? t.getImpactDirection().name() : "";
+                            double score = t.getRelevanceScore() != null ? t.getRelevanceScore() : 0.5;
+                            if (score >= 0.8) return "[핵심] ";
+                            if (score >= 0.6) return "[주요] ";
+                            return "";
+                        })
+                        .orElse("");
+                titles.add(prefix + article.getTitle());
+            }
 
             String stockName = stockRepository.findByStockCode(stockCode)
                     .map(stock -> stock.getStockName())
