@@ -45,7 +45,6 @@ import { useStockNews, useNewsAnalysis, useStockNewsSummary, useSentimentTrend }
 import { useAnalysisReport } from '@/hooks/use-analysis';
 import { useDomesticDisclosure, useOverseasDisclosure, useDisclosureSummary } from '@/hooks/use-disclosure';
 import { SentimentTrendChart } from '@/components/shared/sentiment-trend-chart';
-import { PredictionCard } from '@/components/stocks/prediction-card';
 import { useRouter } from 'next/navigation';
 import { useWatchlistStore } from '@/stores/watchlist-store';
 import { useAuthStore } from '@/stores/auth-store';
@@ -536,8 +535,6 @@ function InfoTab({
           </CardContent>
         </Card>
       )}
-
-      <PredictionCard stockCode={stockCode} />
 
       {/* Feature 4: AI News Summary Card */}
       <StockNewsSummaryCard stockCode={stockCode} />
