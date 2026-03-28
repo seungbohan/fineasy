@@ -14,6 +14,7 @@ import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -24,7 +25,7 @@ public class NewsCollectionScheduler {
 
     private static final Logger log = LoggerFactory.getLogger(NewsCollectionScheduler.class);
 
-    private static final int RETRY_BATCH_SIZE = 100;
+    private static final int RETRY_BATCH_SIZE = 30;
 
     private final NewsCollectorService newsCollectorService;
     private final NewsSentimentService newsSentimentService;
@@ -79,11 +80,13 @@ public class NewsCollectionScheduler {
 
     private void retryUnanalyzedArticles() {
         try {
+            // Only retry articles created within the last 24 hours to prevent infinite retry loops
+            LocalDateTime since = LocalDateTime.now().minusHours(24);
             List<NewsArticleEntity> unanalyzed = newsArticleRepository
-                    .findBySentimentIsNull(PageRequest.of(0, RETRY_BATCH_SIZE));
+                    .findBySentimentIsNullAndCreatedAtAfter(since, PageRequest.of(0, RETRY_BATCH_SIZE));
 
             if (!unanalyzed.isEmpty()) {
-                log.info("Retrying sentiment analysis for {} unanalyzed articles", unanalyzed.size());
+                log.info("Retrying sentiment analysis for {} unanalyzed articles (last 24h)", unanalyzed.size());
                 newsSentimentService.analyzeSentiment(unanalyzed);
             }
         } catch (Exception e) {

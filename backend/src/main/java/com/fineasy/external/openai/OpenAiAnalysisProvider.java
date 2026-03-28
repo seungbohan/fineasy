@@ -18,6 +18,7 @@ import com.fineasy.service.NewsService;
 import com.fineasy.service.StockDataProvider;
 import com.fineasy.service.StockRelationInferenceService;
 import com.fineasy.service.StockService;
+import com.fineasy.service.RedisCacheHelper;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import io.github.resilience4j.retry.annotation.Retry;
 import org.slf4j.Logger;
@@ -26,6 +27,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Component;
 
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -47,6 +49,11 @@ public class OpenAiAnalysisProvider implements AiAnalysisProvider {
     private static final int MAX_REASONING_TOKENS_REPORT = 8000;
     private static final int MAX_REASONING_TOKENS_PREDICTION = 4000;
 
+    private static final String REPORT_CACHE_PREFIX = "ai:report:";
+    private static final String PREDICTION_CACHE_PREFIX = "ai:prediction:";
+    private static final Duration REPORT_CACHE_TTL = Duration.ofHours(2);
+    private static final Duration PREDICTION_CACHE_TTL = Duration.ofHours(2);
+
     private final OpenAiClient openAiClient;
     private final OpenAiPromptBuilder promptBuilder;
     private final ObjectMapper objectMapper;
@@ -59,6 +66,7 @@ public class OpenAiAnalysisProvider implements AiAnalysisProvider {
     private final FinanceOntology financeOntology;
     private final NewsStockTagRepository newsStockTagRepository;
     private final StockRelationInferenceService stockRelationInferenceService;
+    private final RedisCacheHelper redisCacheHelper;
 
     public OpenAiAnalysisProvider(OpenAiClient openAiClient,
                                    OpenAiPromptBuilder promptBuilder,
@@ -71,7 +79,8 @@ public class OpenAiAnalysisProvider implements AiAnalysisProvider {
                                    EmbeddingService embeddingService,
                                    FinanceOntology financeOntology,
                                    NewsStockTagRepository newsStockTagRepository,
-                                   StockRelationInferenceService stockRelationInferenceService) {
+                                   StockRelationInferenceService stockRelationInferenceService,
+                                   RedisCacheHelper redisCacheHelper) {
         this.openAiClient = openAiClient;
         this.promptBuilder = promptBuilder;
         this.objectMapper = objectMapper;
@@ -84,12 +93,20 @@ public class OpenAiAnalysisProvider implements AiAnalysisProvider {
         this.financeOntology = financeOntology;
         this.newsStockTagRepository = newsStockTagRepository;
         this.stockRelationInferenceService = stockRelationInferenceService;
+        this.redisCacheHelper = redisCacheHelper;
     }
 
     @Override
     @CircuitBreaker(name = "openai", fallbackMethod = "generateReportFallback")
     @Retry(name = "openai")
     public AnalysisReportResponse generateReport(String stockCode) {
+        AnalysisReportResponse cached = redisCacheHelper.getFromCache(
+                REPORT_CACHE_PREFIX + stockCode, AnalysisReportResponse.class);
+        if (cached != null) {
+            log.debug("Report cache hit for stock: {}", stockCode);
+            return cached;
+        }
+
         log.info("Generating RAG+Ontology enhanced AI analysis report for stock: {}", stockCode);
 
         StockEntity stock = stockService.getStockEntityByCode(stockCode);
@@ -116,13 +133,22 @@ public class OpenAiAnalysisProvider implements AiAnalysisProvider {
         String systemPrompt = promptBuilder.getReportSystemPrompt();
 
         String aiResponse = openAiClient.chatReasoning(systemPrompt, userPrompt, MAX_REASONING_TOKENS_REPORT);
-        return parseReportResponse(stockCode, aiResponse);
+        AnalysisReportResponse result = parseReportResponse(stockCode, aiResponse);
+        redisCacheHelper.putToCache(REPORT_CACHE_PREFIX + stockCode, result, REPORT_CACHE_TTL);
+        return result;
     }
 
     @Override
     @CircuitBreaker(name = "openai", fallbackMethod = "generatePredictionFallback")
     @Retry(name = "openai")
     public PredictionResponse generatePrediction(String stockCode, String period) {
+        String cacheKey = PREDICTION_CACHE_PREFIX + stockCode + ":" + period;
+        PredictionResponse cached = redisCacheHelper.getFromCache(cacheKey, PredictionResponse.class);
+        if (cached != null) {
+            log.debug("Prediction cache hit for stock: {}, period: {}", stockCode, period);
+            return cached;
+        }
+
         log.info("Generating RAG+Ontology enhanced AI prediction for stock: {}, period: {}", stockCode, period);
 
         StockEntity stock = stockService.getStockEntityByCode(stockCode);
@@ -148,7 +174,9 @@ public class OpenAiAnalysisProvider implements AiAnalysisProvider {
         String systemPrompt = promptBuilder.getPredictionSystemPrompt();
 
         String aiResponse = openAiClient.chatReasoning(systemPrompt, userPrompt, MAX_REASONING_TOKENS_PREDICTION);
-        return parsePredictionResponse(stockCode, period, aiResponse);
+        PredictionResponse result = parsePredictionResponse(stockCode, period, aiResponse);
+        redisCacheHelper.putToCache(cacheKey, result, PREDICTION_CACHE_TTL);
+        return result;
     }
 
     private List<String> fetchGlobalEventSummaries() {

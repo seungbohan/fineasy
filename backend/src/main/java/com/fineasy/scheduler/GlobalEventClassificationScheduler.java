@@ -34,7 +34,7 @@ public class GlobalEventClassificationScheduler {
         log.info("Global event classification scheduler initialized.");
     }
 
-    @Scheduled(fixedRate = 1800000, initialDelay = 300000)
+    @Scheduled(fixedRate = 3600000, initialDelay = 300000)
     @SchedulerLock(name = "classifyRecentNews", lockAtLeastFor = "PT5M", lockAtMostFor = "PT25M")
     public void classifyRecentNews() {
         log.info("Starting global event classification...");

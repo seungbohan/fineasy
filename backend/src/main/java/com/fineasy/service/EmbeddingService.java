@@ -159,7 +159,7 @@ public class EmbeddingService {
     /**
      * Periodically embed news articles that don't have embeddings yet.
      */
-    @Scheduled(fixedRate = 1800000, initialDelay = 600000) // Every 30 min, initial delay 10 min
+    @Scheduled(fixedRate = 3600000, initialDelay = 600000) // Every 1 hour, initial delay 10 min
     @SchedulerLock(name = "embedNewArticles", lockAtLeastFor = "PT5M", lockAtMostFor = "PT25M")
     public void embedNewArticles() {
         try {

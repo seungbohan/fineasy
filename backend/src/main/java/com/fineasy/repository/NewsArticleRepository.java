@@ -57,6 +57,10 @@ public interface NewsArticleRepository extends JpaRepository<NewsArticleEntity, 
     @Query("SELECT n FROM NewsArticleEntity n WHERE n.sentiment IS NULL ORDER BY n.publishedAt DESC")
     List<NewsArticleEntity> findBySentimentIsNull(Pageable pageable);
 
+    @Query("SELECT n FROM NewsArticleEntity n WHERE n.sentiment IS NULL AND n.createdAt >= :since ORDER BY n.publishedAt DESC")
+    List<NewsArticleEntity> findBySentimentIsNullAndCreatedAtAfter(
+            @Param("since") LocalDateTime since, Pageable pageable);
+
     @Query("SELECT DISTINCT n FROM NewsArticleEntity n JOIN n.taggedStocks s " +
             "WHERE s.stockCode IN :stockCodes ORDER BY n.publishedAt DESC")
     List<NewsArticleEntity> findByStockCodesIn(

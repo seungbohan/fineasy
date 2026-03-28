@@ -20,7 +20,7 @@ public class NewsSentimentService {
 
     private static final Logger log = LoggerFactory.getLogger(NewsSentimentService.class);
 
-    private static final int BATCH_SIZE = 10;
+    private static final int BATCH_SIZE = 25;
 
     private final NewsArticleRepository newsArticleRepository;
     private final StockRepository stockRepository;
