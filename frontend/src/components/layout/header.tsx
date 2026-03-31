@@ -116,6 +116,8 @@ export function Header() {
             { href: '/crypto', label: '암호화폐' },
             { href: '/dictionary', label: '용어사전' },
             { href: '/learn', label: '학습센터' },
+            { href: '/calculator', label: '수익률 계산기' },
+            { href: '/feedback', label: '피드백' },
           ].map((item) => {
             const isActive = pathname === item.href || pathname.startsWith(item.href + '/');
             return (
