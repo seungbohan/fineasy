@@ -213,7 +213,7 @@ public class OpenAiAnalysisProvider implements AiAnalysisProvider {
     private List<String> fetchSemanticNews(String stockName, String stockCode, StockEntity stock, int limit) {
         // Weighted news entries: higher weight = more important for analysis
         List<WeightedNews> weightedResult = new ArrayList<>();
-        LocalDateTime since = LocalDateTime.now().minusDays(7);
+        LocalDateTime since = LocalDateTime.now().minusDays(30);
 
         try {
             // Step 1: Direct tagged news (highest priority, weight 1.0)
@@ -301,7 +301,7 @@ public class OpenAiAnalysisProvider implements AiAnalysisProvider {
                 }
             }
 
-            if (weightedResult.size() >= 5) {
+            if (!weightedResult.isEmpty()) {
                 // Sort by weight descending, then limit
                 weightedResult.sort((a, b) -> Double.compare(b.weight(), a.weight()));
                 List<String> sorted = weightedResult.stream()

@@ -13,6 +13,8 @@ import {
   Bitcoin,
   LineChart,
   Newspaper,
+  Calculator,
+  MessageSquarePlus,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -28,6 +30,8 @@ const MORE_ITEMS = [
   { href: '/crypto', label: '암호화폐', icon: Bitcoin },
   { href: '/dictionary', label: '용어사전', icon: BookOpen },
   { href: '/learn', label: '학습센터', icon: GraduationCap },
+  { href: '/calculator', label: '수익률 계산기', icon: Calculator },
+  { href: '/feedback', label: '피드백', icon: MessageSquarePlus },
 ];
 
 const MORE_HREFS = MORE_ITEMS.map((item) => item.href);

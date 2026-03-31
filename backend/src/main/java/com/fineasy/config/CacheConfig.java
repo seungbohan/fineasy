@@ -57,6 +57,9 @@ public class CacheConfig implements CachingConfigurer {
                 Map.entry("analysis-report", defaultConfig),
                 Map.entry("analysis-prediction", defaultConfig),
                 // Static data (24h)
+                Map.entry("etf-presets", staticConfig),
+                Map.entry("sector-contents-list", staticConfig),
+                Map.entry("sector-contents-detail", staticConfig),
                 Map.entry("bok-term-explanation", staticConfig),
                 Map.entry("terms-all", staticConfig),
                 Map.entry("terms-categories", staticConfig),

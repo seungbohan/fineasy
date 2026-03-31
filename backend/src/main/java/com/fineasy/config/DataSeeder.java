@@ -2,6 +2,7 @@ package com.fineasy.config;
 
 import com.fineasy.entity.*;
 import com.fineasy.repository.*;
+import java.math.BigDecimal;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.CommandLineRunner;
@@ -31,6 +32,8 @@ public class DataSeeder implements CommandLineRunner {
     private final MacroIndicatorRepository macroRepo;
     private final NewsArticleRepository newsRepo;
     private final LearnArticleRepository articleRepo;
+    private final EtfPresetRepository etfPresetRepo;
+    private final SectorContentRepository sectorContentRepo;
     private final String ecosApiKey;
     @Autowired(required = false)
     private EcosDataSyncService ecosDataSyncService;
@@ -42,6 +45,8 @@ public class DataSeeder implements CommandLineRunner {
                       MacroIndicatorRepository macroRepo,
                       NewsArticleRepository newsRepo,
                       LearnArticleRepository articleRepo,
+                      EtfPresetRepository etfPresetRepo,
+                      SectorContentRepository sectorContentRepo,
                       @Value("${ecos.api.key:}") String ecosApiKey) {
         this.stockRepo = stockRepo;
         this.priceRepo = priceRepo;
@@ -50,6 +55,8 @@ public class DataSeeder implements CommandLineRunner {
         this.macroRepo = macroRepo;
         this.newsRepo = newsRepo;
         this.articleRepo = articleRepo;
+        this.etfPresetRepo = etfPresetRepo;
+        this.sectorContentRepo = sectorContentRepo;
         this.ecosApiKey = ecosApiKey;
     }
 
@@ -64,6 +71,8 @@ public class DataSeeder implements CommandLineRunner {
         cleanAndSeedMacroIndicators();
         seedNews();
         seedLearnArticles();
+        seedEtfPresets();
+        seedSectorContents();
         log.info("Data seeding completed.");
     }
 
@@ -578,5 +587,341 @@ public class DataSeeder implements CommandLineRunner {
         );
         articleRepo.saveAll(articles);
         log.info("Seeded {} learn articles", articles.size());
+    }
+
+    private void seedEtfPresets() {
+        if (etfPresetRepo.count() > 0) return;
+
+        List<EtfPresetEntity> presets = List.of(
+                new EtfPresetEntity(null, "QQQ", "Invesco QQQ Trust", "인베스코 QQQ",
+                        "NASDAQ", "US Large Cap Growth",
+                        new BigDecimal("15.20"),
+                        "나스닥 100 지수를 추종하는 대표 기술주 ETF. 애플, 마이크로소프트, 엔비디아 등 빅테크 중심."),
+                new EtfPresetEntity(null, "SPY", "SPDR S&P 500 ETF", "SPDR S&P 500",
+                        "NYSE", "US Large Cap Blend",
+                        new BigDecimal("10.50"),
+                        "S&P 500 지수를 추종하는 세계 최대 ETF. 미국 대형주 500개에 분산 투자."),
+                new EtfPresetEntity(null, "SCHD", "Schwab U.S. Dividend Equity ETF", "슈왑 미국 배당주",
+                        "NYSE", "US Dividend",
+                        new BigDecimal("12.10"),
+                        "높은 배당 수익률과 배당 성장을 겸비한 미국 우량 배당주 ETF."),
+                new EtfPresetEntity(null, "VTI", "Vanguard Total Stock Market ETF", "뱅가드 전체 주식시장",
+                        "NYSE", "US Total Market",
+                        new BigDecimal("10.80"),
+                        "미국 전체 주식시장(대형+중형+소형)에 투자하는 ETF. 약 4,000개 종목 보유."),
+                new EtfPresetEntity(null, "KODEX200", "KODEX 200", "코덱스 200",
+                        "KRX", "KR Large Cap",
+                        new BigDecimal("7.30"),
+                        "코스피 200 지수를 추종하는 국내 대표 ETF. 삼성전자, SK하이닉스 등 한국 대형주 중심."),
+                new EtfPresetEntity(null, "TIGER_SP500", "TIGER S&P500", "타이거 미국S&P500",
+                        "KRX", "KR Listed US Equity",
+                        new BigDecimal("10.50"),
+                        "국내 상장 S&P 500 추종 ETF. 원화로 미국 대형주에 투자 가능. 연금계좌 활용 가능."),
+                new EtfPresetEntity(null, "KODEX_DIV", "KODEX Dividend", "코덱스 배당",
+                        "KRX", "KR Dividend",
+                        new BigDecimal("6.80"),
+                        "국내 고배당주 중심 ETF. 금융, 통신, 유틸리티 등 배당 수익률 높은 종목 구성."),
+                new EtfPresetEntity(null, "QLD", "ProShares Ultra QQQ", "프로셰어즈 울트라 QQQ",
+                        "NASDAQ", "US Leveraged",
+                        new BigDecimal("22.00"),
+                        "나스닥 100 지수의 일일 수익률 2배를 추종하는 레버리지 ETF. 고위험·고수익 상품."),
+                new EtfPresetEntity(null, "VWO", "Vanguard FTSE Emerging Markets ETF", "뱅가드 신흥시장",
+                        "NYSE", "Emerging Markets",
+                        new BigDecimal("5.20"),
+                        "중국, 인도, 브라질 등 신흥시장 주식에 분산 투자하는 ETF."),
+                new EtfPresetEntity(null, "GLD", "SPDR Gold Shares", "SPDR 금",
+                        "NYSE", "Commodity",
+                        new BigDecimal("8.10"),
+                        "실물 금 가격을 추종하는 ETF. 인플레이션 헤지 및 포트폴리오 분산 목적.")
+        );
+        etfPresetRepo.saveAll(presets);
+        log.info("Seeded {} ETF presets", presets.size());
+    }
+
+    private void seedSectorContents() {
+        if (sectorContentRepo.count() > 0) return;
+
+        seedSemiconductorSector();
+        seedDefenseSector();
+        seedSecondaryBatterySector();
+        seedBioSector();
+        seedFinanceSector();
+        seedEnergySector();
+
+        log.info("Seeded 6 sector contents");
+    }
+
+    private void seedSemiconductorSector() {
+        SectorContentEntity sector = new SectorContentEntity(
+                null, "semiconductor", "반도체", "Semiconductor",
+                "반도체는 전자기기의 두뇌 역할을 하는 핵심 부품을 설계하고 제조하는 산업입니다. AI, 자율주행, IoT 등 4차 산업혁명의 기반이 되는 핵심 섹터입니다.",
+                "cpu",
+                "## 산업 구조\n\n" +
+                        "반도체 산업은 크게 **팹리스(설계)**, **파운드리(위탁제조)**, **IDM(종합반도체)**, **OSAT(후공정)** 으로 나뉩니다.\n\n" +
+                        "### 팹리스 (Fabless)\n" +
+                        "반도체를 직접 설계만 하고 제조는 외주하는 기업입니다. 엔비디아, AMD, 퀄컴이 대표적입니다.\n\n" +
+                        "### 파운드리 (Foundry)\n" +
+                        "팹리스 기업의 설계도를 받아 반도체를 위탁 생산합니다. TSMC가 세계 시장의 약 55%를 점유하며, 삼성전자가 2위입니다.\n\n" +
+                        "### IDM (Integrated Device Manufacturer)\n" +
+                        "설계부터 제조까지 자체적으로 수행하는 종합 반도체 기업입니다. 인텔, 삼성전자, SK하이닉스가 해당됩니다.\n\n" +
+                        "### 메모리 vs 비메모리\n" +
+                        "- **메모리 반도체**: DRAM, NAND Flash (삼성전자, SK하이닉스, 마이크론)\n" +
+                        "- **비메모리(시스템) 반도체**: CPU, GPU, AP, 센서 (엔비디아, 퀄컴, AMD)",
+                "## 밸류체인\n\n" +
+                        "```\n" +
+                        "설계(EDA/IP) → 웨이퍼 제조 → 전공정(노광/식각/증착) → 후공정(패키징/테스트) → 최종 제품\n" +
+                        "```\n\n" +
+                        "### 1. EDA/IP (Electronic Design Automation)\n" +
+                        "반도체 설계에 필요한 소프트웨어와 핵심 IP를 공급합니다. Synopsys, Cadence, ARM이 대표적입니다.\n\n" +
+                        "### 2. 소재/장비\n" +
+                        "웨이퍼(실리콘 기판), 포토마스크, 특수 가스 등의 소재와 노광장비(ASML), 식각장비(램리서치) 등을 공급합니다.\n\n" +
+                        "### 3. 전공정 (Front-end)\n" +
+                        "웨이퍼 위에 회로를 새기는 과정입니다. 노광 → 식각 → 증착 → 세정의 과정을 수백 번 반복합니다.\n\n" +
+                        "### 4. 후공정 (Back-end)\n" +
+                        "완성된 웨이퍼를 개별 칩으로 자르고, 패키징하여 테스트합니다. 최근 첨단 패키징(CoWoS, HBM)이 핵심 기술로 부상했습니다.\n\n" +
+                        "### 5. 수요처\n" +
+                        "스마트폰, PC, 서버/데이터센터, 자동차, AI 가속기 등 다양한 분야에서 반도체를 소비합니다.",
+                "## 산업 동향\n\n" +
+                        "### AI 반도체 수요 폭증\n" +
+                        "생성형 AI의 확산으로 GPU, HBM(고대역폭메모리) 수요가 급증하고 있습니다. 엔비디아의 데이터센터 매출은 전년 대비 200% 이상 성장했습니다.\n\n" +
+                        "### HBM 경쟁 심화\n" +
+                        "SK하이닉스가 HBM3E로 선두를 유지하는 가운데, 삼성전자와 마이크론이 추격하고 있습니다.\n\n" +
+                        "### 미중 반도체 갈등\n" +
+                        "미국의 대중 반도체 수출 규제가 강화되면서 공급망 재편이 진행 중입니다. 각국이 반도체 자국 생산을 위한 대규모 보조금 정책을 추진하고 있습니다.\n\n" +
+                        "### 첨단 공정 경쟁\n" +
+                        "2nm 이하 공정에서 TSMC, 삼성전자, 인텔 간 치열한 기술 경쟁이 벌어지고 있습니다. GAA(Gate-All-Around) 트랜지스터 기술이 핵심입니다."
+        );
+        sector.addCompany(new SectorRepresentativeCompanyEntity("TSMC", "TSM", "NYSE", "세계 최대 파운드리 기업. 애플, 엔비디아 등 주요 팹리스 기업의 칩을 위탁 생산합니다.", 1));
+        sector.addCompany(new SectorRepresentativeCompanyEntity("엔비디아", "NVDA", "NASDAQ", "AI GPU 시장 지배적 기업. 데이터센터용 H100/B200 칩으로 AI 혁명을 이끌고 있습니다.", 2));
+        sector.addCompany(new SectorRepresentativeCompanyEntity("삼성전자", "005930", "KRX", "메모리 반도체 세계 1위, 파운드리 2위. DRAM/NAND/시스템반도체를 모두 생산하는 종합 반도체 기업입니다.", 3));
+        sector.addCompany(new SectorRepresentativeCompanyEntity("SK하이닉스", "000660", "KRX", "DRAM/NAND 세계 2~3위. HBM(고대역폭메모리) 시장에서 선두를 달리고 있습니다.", 4));
+        sector.addCompany(new SectorRepresentativeCompanyEntity("ASML", "ASML", "NASDAQ", "극자외선(EUV) 노광장비 독점 기업. 첨단 반도체 제조에 필수적인 장비를 공급합니다.", 5));
+        sectorContentRepo.save(sector);
+    }
+
+    private void seedDefenseSector() {
+        SectorContentEntity sector = new SectorContentEntity(
+                null, "defense", "방산", "Defense",
+                "방위산업은 국가 안보를 위한 무기체계, 군용 장비, 방어 시스템을 개발하고 생산하는 산업입니다. 지정학적 긴장 고조로 전 세계적으로 국방비 지출이 증가하고 있습니다.",
+                "shield",
+                "## 산업 구조\n\n" +
+                        "방산 산업은 **완성 무기체계**, **부품/서브시스템**, **방산 IT/사이버**, **유지보수(MRO)** 로 구분됩니다.\n\n" +
+                        "### 완성 무기체계\n" +
+                        "전투기, 전차, 함정, 미사일 등 완제품을 개발·생산합니다. 개발 기간이 10년 이상, 계약 규모가 수조 원에 달합니다.\n\n" +
+                        "### 부품/서브시스템\n" +
+                        "레이더, 항공전자, 유도장치, 통신장비 등 무기체계의 핵심 부품을 공급합니다.\n\n" +
+                        "### 방산 IT/사이버\n" +
+                        "C4ISR(지휘통제통신컴퓨터정보감시정찰) 체계, 사이버 보안 솔루션 등을 제공합니다.\n\n" +
+                        "### 유지보수(MRO)\n" +
+                        "기존 무기체계의 성능 개량, 정비, 수명 연장 서비스를 제공합니다. 안정적인 반복 매출원입니다.",
+                "## 밸류체인\n\n" +
+                        "```\n" +
+                        "소요 기획 → 연구개발(R&D) → 시제품 → 시험평가 → 양산 → 배치/운용 → MRO\n" +
+                        "```\n\n" +
+                        "### 1. 소요 기획\n" +
+                        "군이 필요한 무기체계의 성능과 수량을 결정합니다.\n\n" +
+                        "### 2. R&D / 시제품\n" +
+                        "방산업체가 기술 개발 후 시제품을 제작합니다. ADD(국방과학연구소)와 협력하는 경우가 많습니다.\n\n" +
+                        "### 3. 양산 / 수출\n" +
+                        "시험평가를 통과하면 양산에 들어갑니다. 한국 방산은 K9 자주포, K2 전차, FA-50 경전투기 등으로 수출 성과를 내고 있습니다.\n\n" +
+                        "### 4. MRO / 성능개량\n" +
+                        "배치 후 수십 년간 운용하며 지속적인 유지보수와 성능 개량이 이루어집니다.",
+                "## 산업 동향\n\n" +
+                        "### 글로벌 국방비 증가\n" +
+                        "러시아-우크라이나 전쟁 이후 NATO 국가들이 GDP 대비 국방비 2% 이상으로 확대하고 있습니다. 전 세계 국방비가 사상 최고치를 기록하고 있습니다.\n\n" +
+                        "### 한국 방산 수출 호조\n" +
+                        "폴란드, 사우디, UAE 등과의 대규모 수출 계약으로 한국 방산 수출이 급성장하고 있습니다. K9 자주포, K2 전차, 천궁 미사일 등이 수출 효자 품목입니다.\n\n" +
+                        "### 무인화/자율화\n" +
+                        "드론, 무인 전투 차량, 자율 함정 등 무인 무기체계 개발이 활발합니다.\n\n" +
+                        "### 우주/사이버 영역 확대\n" +
+                        "군사 위성, 우주 감시 체계, 사이버전 역량 강화에 대한 투자가 증가하고 있습니다."
+        );
+        sector.addCompany(new SectorRepresentativeCompanyEntity("한화에어로스페이스", "012450", "KRX", "K9 자주포, 항공엔진, 방산전자 등을 생산하는 한국 대표 방산기업. 폴란드 수출로 주목받고 있습니다.", 1));
+        sector.addCompany(new SectorRepresentativeCompanyEntity("LIG넥스원", "079550", "KRX", "미사일(천궁), 유도무기, 항공전자 전문 기업. 정밀유도무기 분야 한국 1위입니다.", 2));
+        sector.addCompany(new SectorRepresentativeCompanyEntity("록히드마틴", "LMT", "NYSE", "세계 최대 방산기업. F-35 전투기, PAC-3 미사일 등을 생산합니다.", 3));
+        sector.addCompany(new SectorRepresentativeCompanyEntity("RTX (레이시온)", "RTX", "NYSE", "패트리엇 미사일, 항공엔진(프랫앤휘트니) 등을 생산하는 미국 방산/항공우주 기업입니다.", 4));
+        sector.addCompany(new SectorRepresentativeCompanyEntity("한화시스템", "272210", "KRX", "방산 전자장비, 레이더, C4I 체계 개발. 도심항공교통(UAM) 분야에도 진출하고 있습니다.", 5));
+        sectorContentRepo.save(sector);
+    }
+
+    private void seedSecondaryBatterySector() {
+        SectorContentEntity sector = new SectorContentEntity(
+                null, "secondary-battery", "이차전지", "Secondary Battery",
+                "이차전지(충전식 배터리)는 전기차, ESS(에너지저장장치), 모바일기기의 핵심 부품입니다. 전기차 시대의 도래와 함께 가장 빠르게 성장하는 섹터 중 하나입니다.",
+                "battery",
+                "## 산업 구조\n\n" +
+                        "이차전지 산업은 **양극재**, **음극재**, **분리막**, **전해질** 등 4대 핵심 소재와 **셀 제조**, **모듈/팩 조립**으로 구성됩니다.\n\n" +
+                        "### 셀 제조사 (Cell Maker)\n" +
+                        "소재를 조합하여 배터리 셀을 제조합니다. LG에너지솔루션, 삼성SDI, CATL, 파나소닉이 글로벌 빅4입니다.\n\n" +
+                        "### 배터리 유형\n" +
+                        "- **리튬이온(Li-ion)**: 현재 주류. 삼원계(NCM/NCA)와 LFP(리튬인산철)로 나뉨\n" +
+                        "- **전고체 배터리**: 차세대 기술. 안전성과 에너지밀도 향상이 기대됨\n" +
+                        "- **나트륨이온**: 저가형 대안으로 연구 중",
+                "## 밸류체인\n\n" +
+                        "```\n" +
+                        "광물 채굴(리튬/니켈/코발트) → 소재 가공(양극재/음극재/전해질/분리막) → 셀 제조 → 모듈/팩 조립 → 최종 응용(EV/ESS)\n" +
+                        "```\n\n" +
+                        "### 1. 핵심 광물\n" +
+                        "리튬, 니켈, 코발트, 망간 등이 주요 원재료입니다. 자원 편재로 공급망 리스크가 존재합니다.\n\n" +
+                        "### 2. 4대 핵심 소재\n" +
+                        "- **양극재**: 배터리 원가의 40% 차지. 에코프로비엠, 포스코퓨처엠 등\n" +
+                        "- **음극재**: 흑연 기반. 포스코퓨처엠, 대주전자재료 등\n" +
+                        "- **분리막**: 양극과 음극 사이 안전장치. SK아이이테크놀로지 등\n" +
+                        "- **전해질**: 이온 이동 매개체. 솔브레인, 엔켐 등\n\n" +
+                        "### 3. 셀 → 모듈 → 팩\n" +
+                        "셀을 묶어 모듈로, 모듈을 묶어 팩으로 조립하여 전기차나 ESS에 장착합니다.",
+                "## 산업 동향\n\n" +
+                        "### 전기차 성장 지속\n" +
+                        "글로벌 전기차 판매량이 연간 1,400만 대를 돌파하며 배터리 수요가 꾸준히 증가하고 있습니다.\n\n" +
+                        "### LFP vs 삼원계 경쟁\n" +
+                        "가격 경쟁력을 앞세운 LFP(CATL, BYD)와 에너지밀도가 높은 삼원계(LG에너지솔루션, 삼성SDI) 간 경쟁이 심화되고 있습니다.\n\n" +
+                        "### 전고체 배터리 개발 경쟁\n" +
+                        "삼성SDI, 토요타 등이 전고체 배터리 상용화를 목표로 연구개발 중입니다. 2027~2028년 양산이 목표입니다.\n\n" +
+                        "### 북미/유럽 현지 생산\n" +
+                        "IRA(인플레이션감축법) 등의 영향으로 배터리 셀 제조사들이 미국, 유럽에 대규모 공장을 건설하고 있습니다."
+        );
+        sector.addCompany(new SectorRepresentativeCompanyEntity("LG에너지솔루션", "373220", "KRX", "글로벌 배터리 셀 제조 2위. GM, 현대차 등에 배터리를 공급하며 북미 공장을 확대 중입니다.", 1));
+        sector.addCompany(new SectorRepresentativeCompanyEntity("삼성SDI", "006400", "KRX", "프리미엄 배터리 셀 제조사. BMW, 리비안 등에 공급하며 전고체 배터리 기술을 선도하고 있습니다.", 2));
+        sector.addCompany(new SectorRepresentativeCompanyEntity("CATL", "300750", "SZSE", "세계 최대 배터리 셀 제조사. LFP 배터리 기술력과 가격 경쟁력으로 시장을 주도하고 있습니다.", 3));
+        sector.addCompany(new SectorRepresentativeCompanyEntity("에코프로비엠", "247540", "KOSDAQ", "양극재 전문 기업. 하이니켈 양극재 기술력으로 삼성SDI 등에 공급하고 있습니다.", 4));
+        sector.addCompany(new SectorRepresentativeCompanyEntity("파나소닉", "6752", "TSE", "테슬라에 원통형 배터리를 독점 공급했던 기업. 4680 배터리 양산을 추진 중입니다.", 5));
+        sectorContentRepo.save(sector);
+    }
+
+    private void seedBioSector() {
+        SectorContentEntity sector = new SectorContentEntity(
+                null, "bio", "바이오", "Bio/Pharma",
+                "바이오/제약 산업은 신약 개발, 바이오시밀러, 위탁생산(CDMO) 등을 포괄하는 고부가가치 산업입니다. 고령화와 신기술 발전으로 장기 성장이 전망됩니다.",
+                "dna",
+                "## 산업 구조\n\n" +
+                        "바이오 산업은 **신약 개발(혁신 제약)**, **바이오시밀러**, **CDMO(위탁생산)**, **진단/의료기기** 등으로 구분됩니다.\n\n" +
+                        "### 혁신 제약 (Big Pharma)\n" +
+                        "블록버스터급 신약을 개발하여 특허 기간 동안 독점 판매합니다. 화이자, 로슈, 노바티스 등이 대표적입니다.\n\n" +
+                        "### 바이오시밀러\n" +
+                        "특허 만료된 바이오의약품의 복제약입니다. 셀트리온이 세계적 선두 기업입니다.\n\n" +
+                        "### CDMO (위탁개발생산)\n" +
+                        "제약사의 의약품을 대신 개발·생산해주는 사업입니다. 삼성바이오로직스가 글로벌 1위입니다.\n\n" +
+                        "### 바이오텍 (Biotech)\n" +
+                        "혁신적인 파이프라인을 보유한 중소형 기업. 높은 성장 가능성과 함께 리스크도 큽니다.",
+                "## 밸류체인\n\n" +
+                        "```\n" +
+                        "타겟 발굴 → 후보물질 탐색 → 전임상(동물실험) → 임상 1/2/3상 → 허가 심사 → 상업화 → 시판 후 조사\n" +
+                        "```\n\n" +
+                        "### 1. 신약 개발 과정\n" +
+                        "타겟 발굴부터 시판까지 평균 10~15년, 비용 1~2조 원이 소요됩니다. 성공 확률은 약 5~10%입니다.\n\n" +
+                        "### 2. 임상 시험 단계\n" +
+                        "- **임상 1상**: 소수 건강인 대상 안전성 확인\n" +
+                        "- **임상 2상**: 환자 대상 유효성/용량 확인 (가장 중요한 관문)\n" +
+                        "- **임상 3상**: 대규모 환자 대상 효능/안전성 최종 확인\n\n" +
+                        "### 3. CDMO/CMO\n" +
+                        "바이오의약품 제조 공정은 복잡하여 많은 제약사가 전문 CDMO에 생산을 위탁합니다.",
+                "## 산업 동향\n\n" +
+                        "### GLP-1 비만 치료제 열풍\n" +
+                        "노보노디스크(오젬픽/위고비), 릴리(마운자로/젭바운드)의 GLP-1 계열 약물이 블록버스터로 성장하고 있습니다.\n\n" +
+                        "### ADC(항체약물접합체) 부상\n" +
+                        "항암 치료의 새로운 패러다임으로 ADC 기술이 주목받고 있으며, 관련 라이선스 딜이 급증하고 있습니다.\n\n" +
+                        "### AI 신약 개발\n" +
+                        "AI를 활용한 약물 설계와 임상 최적화가 신약 개발 기간과 비용을 혁신적으로 단축할 것으로 기대됩니다.\n\n" +
+                        "### CDMO 시장 성장\n" +
+                        "바이오의약품 비중 확대에 따라 CDMO 시장이 연 10% 이상 성장하고 있습니다."
+        );
+        sector.addCompany(new SectorRepresentativeCompanyEntity("삼성바이오로직스", "207940", "KRX", "글로벌 CDMO 1위. 인천 송도에 세계 최대 바이오의약품 생산 시설을 보유하고 있습니다.", 1));
+        sector.addCompany(new SectorRepresentativeCompanyEntity("셀트리온", "068270", "KRX", "바이오시밀러 세계 선두 기업. 램시마, 트룩시마 등으로 글로벌 시장을 개척하고 있습니다.", 2));
+        sector.addCompany(new SectorRepresentativeCompanyEntity("모더나", "MRNA", "NASDAQ", "mRNA 기술 플랫폼 보유. COVID-19 백신으로 성장했으며 암 백신, 희귀질환 치료제를 개발 중입니다.", 3));
+        sector.addCompany(new SectorRepresentativeCompanyEntity("화이자", "PFE", "NYSE", "세계 최대 제약사 중 하나. 다양한 치료 영역에서 블록버스터 의약품을 보유하고 있습니다.", 4));
+        sector.addCompany(new SectorRepresentativeCompanyEntity("알테오젠", "196170", "KOSDAQ", "피하주사 전환 플랫폼 기술 보유. 글로벌 빅파마와 기술 라이선스 계약을 체결하고 있습니다.", 5));
+        sectorContentRepo.save(sector);
+    }
+
+    private void seedFinanceSector() {
+        SectorContentEntity sector = new SectorContentEntity(
+                null, "finance", "금융", "Finance",
+                "금융 산업은 은행, 증권, 보험, 자산운용 등을 포괄하며, 경제의 혈액 역할을 합니다. 디지털 전환과 핀테크의 부상으로 빠르게 변화하고 있습니다.",
+                "landmark",
+                "## 산업 구조\n\n" +
+                        "금융 산업은 **은행**, **증권/투자은행**, **보험**, **자산운용**, **핀테크** 등으로 구분됩니다.\n\n" +
+                        "### 은행 (Banking)\n" +
+                        "예금을 받아 대출을 실행하는 전통적 금융 중개 기능을 수행합니다. 예대마진(NIM)이 핵심 수익원입니다.\n\n" +
+                        "### 증권/투자은행 (Securities/IB)\n" +
+                        "주식/채권 중개, IPO 주선, M&A 자문, 자산관리 등의 업무를 수행합니다.\n\n" +
+                        "### 보험 (Insurance)\n" +
+                        "생명보험, 손해보험으로 나뉘며, 보험료 수입과 투자 수익으로 운영됩니다.\n\n" +
+                        "### 자산운용 (Asset Management)\n" +
+                        "펀드, ETF, 연금 등을 운용하여 수수료 수익을 얻습니다.\n\n" +
+                        "### 금융지주회사\n" +
+                        "은행, 증권, 보험 등 여러 금융 자회사를 보유한 지주회사 형태가 한국 금융의 주류입니다.",
+                "## 밸류체인\n\n" +
+                        "```\n" +
+                        "자금 조달(예금/채권) → 리스크 평가(심사/신용평가) → 자금 운용(대출/투자) → 수익 배분(이자/배당)\n" +
+                        "```\n\n" +
+                        "### 1. 자금 조달\n" +
+                        "고객 예금, 채권 발행, 중앙은행 차입 등으로 자금을 조달합니다.\n\n" +
+                        "### 2. 리스크 관리\n" +
+                        "신용 리스크, 시장 리스크, 운영 리스크를 관리합니다. BIS 비율 등 건전성 지표가 중요합니다.\n\n" +
+                        "### 3. 수익 구조\n" +
+                        "- **이자 수익**: 대출 금리와 예금 금리의 차이(NIM)\n" +
+                        "- **비이자 수익**: 수수료, 트레이딩, 자산관리 등\n" +
+                        "- **투자 수익**: 채권, 주식 등 자체 투자 포트폴리오 운용",
+                "## 산업 동향\n\n" +
+                        "### 금리 환경 변화\n" +
+                        "글로벌 금리 인하 사이클에 진입하면서 은행의 NIM 축소 압력이 있으나, 대출 수요 증가가 기대됩니다.\n\n" +
+                        "### 디지털 전환 가속\n" +
+                        "인터넷/모바일 뱅킹 비중이 90%를 넘어서며, 점포 수는 지속 감소하고 있습니다.\n\n" +
+                        "### 주주환원 강화\n" +
+                        "밸류업 프로그램 영향으로 금융지주사들의 배당성향과 자사주 매입이 확대되고 있습니다. 총주주환원율 30~40% 수준으로 개선 중입니다.\n\n" +
+                        "### AI/빅데이터 활용\n" +
+                        "AI 기반 신용평가, 로보어드바이저, 이상거래 탐지 등 금융 AI 활용이 빠르게 확산되고 있습니다."
+        );
+        sector.addCompany(new SectorRepresentativeCompanyEntity("KB금융", "105560", "KRX", "한국 최대 금융지주. KB국민은행, KB증권, KB손해보험 등을 보유하고 있습니다.", 1));
+        sector.addCompany(new SectorRepresentativeCompanyEntity("신한지주", "055550", "KRX", "한국 2위 금융지주. 신한은행, 신한투자증권 등을 보유. 디지털 금융에 적극 투자하고 있습니다.", 2));
+        sector.addCompany(new SectorRepresentativeCompanyEntity("JP모건 체이스", "JPM", "NYSE", "세계 최대 투자은행. 상업은행, 투자은행, 자산관리를 모두 아우르는 글로벌 금융 리더입니다.", 3));
+        sector.addCompany(new SectorRepresentativeCompanyEntity("골드만삭스", "GS", "NYSE", "세계 최고 투자은행. M&A 자문, 트레이딩, 자산관리에서 강점을 보유하고 있습니다.", 4));
+        sector.addCompany(new SectorRepresentativeCompanyEntity("하나금융지주", "086790", "KRX", "한국 3위 금융지주. 하나은행을 중심으로 글로벌 네트워크를 확대하고 있습니다.", 5));
+        sectorContentRepo.save(sector);
+    }
+
+    private void seedEnergySector() {
+        SectorContentEntity sector = new SectorContentEntity(
+                null, "energy", "에너지", "Energy",
+                "에너지 산업은 전력 생산, 송배전, 석유/가스, 신재생에너지를 포괄합니다. 탄소중립 목표에 따라 전통 에너지에서 청정에너지로의 전환이 가속화되고 있습니다.",
+                "zap",
+                "## 산업 구조\n\n" +
+                        "에너지 산업은 **전통 에너지(화석연료)**, **원자력**, **신재생에너지**, **전력 유틸리티**, **에너지 인프라** 등으로 구분됩니다.\n\n" +
+                        "### 화석연료 (Oil & Gas)\n" +
+                        "석유, 천연가스의 탐사·시추·정제·판매를 수행합니다. 에너지 전환기에도 여전히 세계 에너지의 80% 이상을 차지합니다.\n\n" +
+                        "### 원자력\n" +
+                        "안정적인 베이스로드 전원으로 재평가받고 있습니다. SMR(소형모듈원전) 등 차세대 원전 기술이 주목받고 있습니다.\n\n" +
+                        "### 신재생에너지\n" +
+                        "태양광, 풍력, 수소 등 청정에너지원입니다. 정부 보조금과 탄소 규제로 빠르게 성장하고 있습니다.\n\n" +
+                        "### 전력 유틸리티\n" +
+                        "발전소를 운영하고 전력을 송배전하는 사업입니다. 규제 산업으로 안정적인 수익 구조를 가집니다.",
+                "## 밸류체인\n\n" +
+                        "```\n" +
+                        "1차 에너지원(석유/가스/우라늄/태양광/풍력) → 에너지 변환(발전소/정유소) → 송배전/수송 → 최종 소비(가정/산업/수송)\n" +
+                        "```\n\n" +
+                        "### 1. 상류(Upstream)\n" +
+                        "석유/가스 탐사, 시추, 생산. 높은 자본 투자와 가격 변동성이 특징입니다.\n\n" +
+                        "### 2. 중류(Midstream)\n" +
+                        "파이프라인, LNG 터미널, 저장 시설을 통한 에너지 수송/저장입니다.\n\n" +
+                        "### 3. 하류(Downstream)\n" +
+                        "정유, 석유화학, 주유소 운영 등 최종 소비자에게 에너지를 공급합니다.\n\n" +
+                        "### 4. 발전/유틸리티\n" +
+                        "다양한 에너지원으로 전기를 생산하고 소비자에게 공급합니다.",
+                "## 산업 동향\n\n" +
+                        "### 에너지 전환 가속\n" +
+                        "2050 탄소중립 목표에 따라 태양광, 풍력 설치 용량이 매년 사상 최고치를 갱신하고 있습니다.\n\n" +
+                        "### 원전 르네상스\n" +
+                        "AI 데이터센터의 전력 수요 급증과 탄소중립 목표로 원전이 재평가받고 있습니다. 한국의 원전 수출(UAE 바라카 원전)도 성과를 내고 있습니다.\n\n" +
+                        "### 수소 경제\n" +
+                        "그린수소(신재생에너지 기반)를 중심으로 수소 경제 생태계 구축이 진행 중입니다. 수소 연료전지, 수전해 장비 등이 주목받고 있습니다.\n\n" +
+                        "### ESS(에너지저장장치) 수요 급증\n" +
+                        "신재생에너지의 간헐성을 보완하기 위한 대용량 배터리 ESS 수요가 폭발적으로 증가하고 있습니다."
+        );
+        sector.addCompany(new SectorRepresentativeCompanyEntity("한국전력", "015760", "KRX", "한국 전력 산업의 핵심 공기업. 발전, 송전, 배전, 판매를 총괄합니다.", 1));
+        sector.addCompany(new SectorRepresentativeCompanyEntity("두산에너빌리티", "034020", "KRX", "원전/화력 발전설비 제조 전문 기업. 체코 원전 수출 등으로 원전 르네상스의 수혜가 기대됩니다.", 2));
+        sector.addCompany(new SectorRepresentativeCompanyEntity("넥스트에라 에너지", "NEE", "NYSE", "미국 최대 신재생에너지 발전사. 풍력/태양광 발전 용량 세계 1위입니다.", 3));
+        sector.addCompany(new SectorRepresentativeCompanyEntity("엑손모빌", "XOM", "NYSE", "세계 최대 석유/가스 기업 중 하나. 전통 에너지에서 탄소 포집, 수소 등 신사업으로 확장 중입니다.", 4));
+        sector.addCompany(new SectorRepresentativeCompanyEntity("한화솔루션", "009830", "KRX", "태양광 셀/모듈 제조 및 발전 사업. 미국에 대규모 태양광 공장을 건설하고 있습니다.", 5));
+        sectorContentRepo.save(sector);
     }
 }

@@ -232,13 +232,23 @@ public class NewsService {
             return stockRepository.findByStockCode(stockCode)
                     .map(stock -> {
                         String nameKeyword = stock.getStockName().replace("전자", "").replace("그룹", "");
-                        String sectorKeyword = stock.getSector() != null ? stock.getSector() : nameKeyword;
+                        // Use stock code as second keyword for overseas stocks (e.g. NVDA, AAPL)
+                        String secondKeyword = (stock.getSector() != null && !stock.getSector().isBlank())
+                                ? stock.getSector() : stockCode;
                         List<String> keywordResults = newsArticleRepository
-                                .findByTitleContaining(nameKeyword, sectorKeyword, PageRequest.of(0, limit))
+                                .findByTitleContaining(nameKeyword, secondKeyword, PageRequest.of(0, limit))
                                 .stream()
                                 .map(NewsArticleEntity::getTitle)
                                 .toList();
-                        return !keywordResults.isEmpty() ? keywordResults : tagged;
+                        if (!keywordResults.isEmpty()) return keywordResults;
+
+                        // Additional fallback: search by stock code directly (ticker in headlines)
+                        List<String> codeResults = newsArticleRepository
+                                .findByTitleContainingKeyword(stockCode, PageRequest.of(0, limit))
+                                .stream()
+                                .map(NewsArticleEntity::getTitle)
+                                .toList();
+                        return !codeResults.isEmpty() ? codeResults : tagged;
                     })
                     .orElse(tagged);
         } catch (Exception e) {
